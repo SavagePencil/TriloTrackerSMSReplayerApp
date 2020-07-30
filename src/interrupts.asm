@@ -1,10 +1,16 @@
+.IFNDEF __INTERRUPTS_ASM__
+.DEFINE __INTERRUPTS_ASM__
+
+.INCLUDE "Managers/modemanager.asm"
+
 .bank 0 slot 0
 .org $0038
 .section "SMSFramework Video Interrupts" FORCE
 SMSFramework_VideoInterruptHandler:
-    exx
+    push    hl
+        ld      hl, (gModeManager.CurrVideoInterruptJumpTarget)
         call    CallHL
-    exx
+    pop     hl
     ei
     reti
 .ends
@@ -17,13 +23,15 @@ SMSFramework_NMIHandler:
         ; Are we initialized, or did this come in while we were booting?
         ld a, (SMSFrameWork_Initialized)
         and a
-        jr  z, _SMSFramework_NMIHandler_Restore ; Ignore it if we're not yet initialized.
+        jr  z, @Restore ; Ignore it if we're not yet initialized.
 
         ; Pass this on to the mode handler
         push    ix
             call ModeManager_OnNMI
         pop     ix
-_SMSFramework_NMIHandler_Restore:
+@Restore:
     pop     af
     retn
-.ends
+.ENDS
+
+.ENDIF  ;__INTERRUPTS_ASM__
