@@ -18,18 +18,33 @@
 ;==============================================================
 .SDSCTAG 1.2,"SMS TriloTracker Replayer App","SMSFramework app to play TriloTracker SMS songs","SavagePencil"
 
+.RAMSECTION "Application Main Loop State" SLOT 3
+    ; Set to 0 when we are waiting for a VBlank, or non-zero when we're not.
+    gWatitingForVBlank DB
+.ENDS 
+
 
 .SECTION "Application Main Loop" FREE
 ; This routine is called by the framework when we're ready to enter
 ; the main loop.
 Application_MainLoop_InitialEntry:
+    xor     a
+    ld      (gWatitingForVBlank), a     ; Let the mode tell us when to wait for interrupts.
+
     ei                                  ; Turn on interrupts
 
 Application_MainLoop:    
-    call ModeManager_OnUpdate           ; Update for current mode
-    call ModeManager_OnRenderPrep       ; Prepare things for rendering
-    halt                                ; Wait for VBlank
-    jp   Application_MainLoop           
+    call    ModeManager_OnUpdate        ; Update for current mode
+    call    ModeManager_OnRenderPrep    ; Prepare things for rendering
+
+    ; See if we're waiting for interrupt
+    ld      hl, gWatitingForVBlank
+-:
+    ld      a, (hl)
+    and     a
+    jp      z, Application_MainLoop     ; Not waiting for interrupt; go back to the top.
+    halt                                ; Wait for interrupt
+    jp      -                           ; Re-evaluate.
 .ENDS
 
 .SECTION "Application Bootstrap" FREE

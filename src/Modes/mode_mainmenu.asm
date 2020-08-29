@@ -4,6 +4,7 @@
 .include "Managers/vdpmanager.asm"
 .include "Modules/debounce_module.asm"
 .include "Modules/execute_buffer.asm"
+.include "Modules/profiler_module.asm"
 .include "Utils/macros.asm"
 .include "Utils/tile_routines.asm"
 
@@ -24,6 +25,11 @@
 
     ; Temp action for the execute buffer (re-useable)
     TempUploadStringAction      INSTANCEOF sAction_UploadString_Indirect
+
+    ; Create a profiler for each section
+    ProfilerUpdate              INSTANCEOF sProfilerInstance
+    ProfilerRenderPrep          INSTANCEOF sProfilerInstance
+    ProfilerVBlank              INSTANCEOF sProfilerInstance
 .ENDST
 
 .RAMSECTION "Mode - Main Menu Screen Context" SLOT 3
@@ -45,6 +51,9 @@
 
 ; Which column does the highlight start at?
 .DEFINE MAIN_MENU_OPTION_HIGHLIGHT_COLUMN   5
+
+; What line do we start rendering the profiling info at?
+.DEFINE MAIN_MENU_PROFILER_HBLANK_LINE      100
 
 ; Public
 ModeMainMenu:
@@ -75,8 +84,13 @@ _ModeMainMenu:
     di
     ; Turn off the display & VBlanks by OR'ing to the current value.
     ld      a, (gVDPManager.Registers.VideoModeControl2)
-    and     $FF ~(VDP_REGISTER1_ENABLE_DISPLAY | VDP_REGISTER1_ENABLE_VBLANK)
+    and     ~(VDP_REGISTER1_ENABLE_DISPLAY | VDP_REGISTER1_ENABLE_VBLANK)
     ld      e, VDP_COMMMAND_MASK_REGISTER1
+    call    VDPManager_WriteRegisterImmediate
+
+    ; Set our border color palette entry.
+    ld      a, MAIN_MENU_BORDER_PAL_ENTRY & $0F
+    ld      e, VDP_COMMMAND_MASK_REGISTER7
     call    VDPManager_WriteRegisterImmediate
 
     ; Default us to joypad 1 active.
@@ -183,7 +197,23 @@ _ModeMainMenu:
     call @SetupForDebounce
 
     ; We're ready to roll.  Turn on interrupts and the screen.
-    ; Turn on the display, by OR'ing to the current value.
+
+    ; Indicate that we want HBlank Interrupts.
+    ld      a, MAIN_MENU_PROFILER_HBLANK_LINE
+    ld      e, VDP_COMMMAND_MASK_REGISTER10
+    call    VDPManager_WriteRegisterImmediate
+
+    ld      a, (gVDPManager.Registers.VideoModeControl1)
+    or      VDP_REGISTER0_ENABLE_HBLANK
+    ld      e, VDP_COMMMAND_MASK_REGISTER0
+    call    VDPManager_WriteRegisterImmediate
+
+    ; Read the status port so that we don't immediately get an interrupt
+    ; after turning them on.
+    in      a, (VDP_STATUS_PORT)
+
+    ; Turn on the display and indicate that we want VBlank interrupts, 
+    ; by OR'ing to the current value.
     ld      a, (gVDPManager.Registers.VideoModeControl2)
     or      VDP_REGISTER1_ENABLE_DISPLAY | VDP_REGISTER1_ENABLE_VBLANK
     ld      e, VDP_COMMMAND_MASK_REGISTER1
@@ -194,6 +224,10 @@ _ModeMainMenu:
     ret
 
 @OnUpdate:
+    ; Start our profiler.
+    ld      hl, gMainMenuScreen.ProfilerUpdate
+    call    ProfilerModule@Begin
+
     ; The previous selection is now the current one.
     ld      a, (gMainMenuScreen.CurrSelection)
     ld      (gMainMenuScreen.PrevSelection), a
@@ -219,9 +253,17 @@ _ModeMainMenu:
     call    z, @MoveSelection@Up
 
 @@InputCheckComplete:
+
+    ; End our profiler.
+    ld      hl, gMainMenuScreen.ProfilerUpdate
+    call    ProfilerModule@End
     ret
 
 @OnRenderPrep:
+    ; Start our profiler.
+    ld      hl, gMainMenuScreen.ProfilerRenderPrep
+    call    ProfilerModule@Begin
+
     ; Clear our execute buffer.
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
     call    ExecuteBuffer_Reset
@@ -244,16 +286,79 @@ _ModeMainMenu:
     call    @EnqueueOptionHighlightChange
 
 @@ChangeCheckDone:
+
+    ; End our profiler.
+    ld      hl, gMainMenuScreen.ProfilerRenderPrep
+    call    ProfilerModule@End
+
+    ; Wait for VBL.
+    ld      a, 1
+    ld      (gWatitingForVBlank), a
+
+    ret
+
+@RenderProfile:
+    ; Render our profilers as sections of the overscan/border area.
+
+    ; VBlank
+    ld      hl, gMainMenuScreen.ProfilerVBlank
+    call    ProfilerModule@GetElapsed
+    ld      b, a    ; #/lines
+    ld      c, MAIN_MENU_PROFILER_VBLANK_COLOR
+    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    call    @RenderInOverscan
+
+    ; Update
+    ld      hl, gMainMenuScreen.ProfilerUpdate
+    call    ProfilerModule@GetElapsed
+    ld      b, a    ; #/lines
+    ld      c, MAIN_MENU_PROFILER_UPDATE_COLOR
+    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    call    @RenderInOverscan
+
+    ; RenderPrep
+    ld      hl, gMainMenuScreen.ProfilerRenderPrep
+    call    ProfilerModule@GetElapsed
+    ld      b, a    ; #/lines
+    ld      c, MAIN_MENU_PROFILER_RENDER_PREP_COLOR
+    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    call    @RenderInOverscan
+
+    ; Done; revert to the cleared color.
+    ld      b, 0
+    ld      c, MAIN_MENU_PROFILER_NO_COLOR
+    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    call    @RenderInOverscan
+
     ret
 
 @InterruptHandler:
     PUSH_ALL_REGS
-        in  a, (VDP_STATUS_PORT)                ; Satisfy the interrupt
+        in      a, (VDP_STATUS_PORT)                ; Satisfy the interrupt
+        ; Is this a VBlank or an HBlank?
+        add     a, a                                ; Left shift one (faster than bit 7, a)
+        jr      c, @@VBlank
+@@HBlank:
+        call    @RenderProfile
+    POP_ALL_REGS
+    ret
+
+@@VBlank:
+        ; Start our profiler.
+        ld      hl, gMainMenuScreen.ProfilerVBlank
+        call    ProfilerModule@Begin
 
         ; Execute the execute buffer
         ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
         call    ExecuteBuffer_Execute
 
+        ; End our profiler.
+        ld      hl, gMainMenuScreen.ProfilerVBlank
+        call    ProfilerModule@End
+
+        ; No longer waiting for VBlank.
+        xor     a
+        ld      (gWatitingForVBlank), a
     POP_ALL_REGS
     ret
 
@@ -349,4 +454,46 @@ _ModeMainMenu:
     call    ExecuteBuffer_AttemptEnqueue_IY
 
     ret
+
+;==============================================================================
+; @RenderInOverscan
+; Renders a color in the overscan area (border) for the specified #/lines.
+; INPUTS:   B: #/lines to draw for (0 == 1 line)
+;           C: Color to render
+;           E: Palette entry          
+; OUTPUTS: None
+; Destroys Everything
+;==============================================================================
+@RenderInOverscan:
+    ; Wait for a new line.
+    in      a, (VDP_VCOUNTER_PORT)
+    ld      d, a
+-:
+    in      a, (VDP_VCOUNTER_PORT)
+    cp      d
+    jr      z, -
+
+    ; New line just started.
+    ld      d, a    ; Hold onto current line
+
+    ; Set the palette entry
+    ; E & C are already properly set
+    call    VDP_SetPaletteEntry
+
+    ; Loop waiting for the duration.
+-:
+    ld      a, b
+    and     a
+    ret     z       ; If done with lines, get out.
+
+--:
+    in      a, (VDP_VCOUNTER_PORT)
+    cp      d
+    jr      z, --   ; Wait until it changes
+
+    ; Store new line as current.
+    ld      d, a
+    dec     b
+    jr      -
+
 .ENDS
