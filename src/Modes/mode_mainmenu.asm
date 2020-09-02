@@ -304,30 +304,26 @@ _ModeMainMenu:
     ld      hl, gMainMenuScreen.ProfilerVBlank
     call    ProfilerModule@GetElapsed
     ld      b, a    ; #/lines
-    ld      c, MAIN_MENU_PROFILER_VBLANK_COLOR
-    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    ld      c, MAIN_MENU_PROFILER_PAL_ENTRY_VBLANK & $0F
     call    @RenderInOverscan
 
     ; Update
     ld      hl, gMainMenuScreen.ProfilerUpdate
     call    ProfilerModule@GetElapsed
     ld      b, a    ; #/lines
-    ld      c, MAIN_MENU_PROFILER_UPDATE_COLOR
-    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    ld      c, MAIN_MENU_PROFILER_PAL_ENTRY_UPDATE  & $0F
     call    @RenderInOverscan
 
     ; RenderPrep
     ld      hl, gMainMenuScreen.ProfilerRenderPrep
     call    ProfilerModule@GetElapsed
     ld      b, a    ; #/lines
-    ld      c, MAIN_MENU_PROFILER_RENDER_PREP_COLOR
-    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    ld      c, MAIN_MENU_PROFILER_PAL_ENTRY_RENDER_PREP & $0F
     call    @RenderInOverscan
 
     ; Done; revert to the cleared color.
     ld      b, 0
-    ld      c, MAIN_MENU_PROFILER_NO_COLOR
-    ld      e, MAIN_MENU_BORDER_PAL_ENTRY
+    ld      c, MAIN_MENU_BORDER_PAL_ENTRY & $0F
     call    @RenderInOverscan
 
     ret
@@ -459,8 +455,7 @@ _ModeMainMenu:
 ; @RenderInOverscan
 ; Renders a color in the overscan area (border) for the specified #/lines.
 ; INPUTS:   B: #/lines to draw for (0 == 1 line)
-;           C: Color to render
-;           E: Palette entry          
+;           C: Palette entry
 ; OUTPUTS: None
 ; Destroys Everything
 ;==============================================================================
@@ -476,9 +471,10 @@ _ModeMainMenu:
     ; New line just started.
     ld      d, a    ; Hold onto current line
 
-    ; Set the palette entry
-    ; E & C are already properly set
-    call    VDP_SetPaletteEntry
+    ; Set our border color palette entry.
+    ld      a, c
+    ld      e, VDP_COMMMAND_MASK_REGISTER7
+    call    VDPManager_WriteRegisterImmediate
 
     ; Loop waiting for the duration.
 -:
