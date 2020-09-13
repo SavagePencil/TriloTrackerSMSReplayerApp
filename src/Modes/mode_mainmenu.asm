@@ -5,11 +5,13 @@
 .include "Modules/debounce_module.asm"
 .include "Modules/execute_buffer.asm"
 .include "Modules/profiler_module.asm"
+.INCLUDE "Modules/ui_button.asm"
 .include "Utils/macros.asm"
 .include "Utils/tile_routines.asm"
 
 .include "../data/fonts/default_font.asm"
 .include "../data/screens/main_menu_data.asm"
+.include "../data/ui/button_gfx.asm"
 
 .STRUCT sMainMenuScreen
     ; Module used to ensure the player releases buttons before we accept input from them.
@@ -24,7 +26,20 @@
     ExecuteBufferMemory         DSB 128 ; Bytes of RAM for the Execute Buffer
 
     ; Temp action for the execute buffer (re-useable)
-    TempUploadStringAction      INSTANCEOF sAction_UploadString_Indirect
+    .UNION
+        TempUploadStringAction      INSTANCEOF sAction_UploadString_Indirect
+    .NEXTU
+        TempUpload1bppAction        INSTANCEOF sAction_Upload1bppToVRAM_Implicit
+    .ENDU
+
+    ; UI Controls
+    UIButton_Profiler           INSTANCEOF sUIButtonInstance
+    UIButton_Visualizer         INSTANCEOF sUIButtonInstance
+    UIButton_LoadSong           INSTANCEOF sUIButtonInstance
+    UIButton_Play               INSTANCEOF sUIButtonInstance
+    UIButton_Pause              INSTANCEOF sUIButtonInstance
+    UIButton_Fade               INSTANCEOF sUIButtonInstance
+    UIButton_Transpose          INSTANCEOF sUIButtonInstance
 
     ; Create a profiler for each section
     ProfilerUpdate              INSTANCEOF sProfilerInstance
@@ -193,6 +208,52 @@ _ModeMainMenu:
     ld      b, Mode_MainMenu_Data@Strings@Option_Selected@End - Mode_MainMenu_Data@Strings@Option_Selected    ; Len
     call    @EnqueueOptionHighlightChange
 
+    ; Create all of our controls.
+    ld      de, gMainMenuScreen.UIButton_Profiler.FSM
+    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, Mode_MainMenu_Data@UIButtons@ProfileButton
+    call    UIButton@Init
+
+    ld      de, gMainMenuScreen.UIButton_Visualizer.FSM
+    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, Mode_MainMenu_Data@UIButtons@VisualizerButton
+    call    UIButton@Init
+
+    ld      de, gMainMenuScreen.UIButton_LoadSong.FSM
+    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, Mode_MainMenu_Data@UIButtons@LoadSongButton
+    call    UIButton@Init
+
+    ld      de, gMainMenuScreen.UIButton_Play.FSM
+    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, Mode_MainMenu_Data@UIButtons@PlayButton
+    call    UIButton@Init
+
+    ld      de, gMainMenuScreen.UIButton_Fade.FSM
+    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, Mode_MainMenu_Data@UIButtons@FadeButton
+    call    UIButton@Init
+
+    ld      de, gMainMenuScreen.UIButton_Transpose.FSM
+    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, Mode_MainMenu_Data@UIButtons@TransposeButton
+    call    UIButton@Init
+
+    ; With all of our graphical changes queued, go ahead and flush the execute buffer.
+    ; Execute the execute buffer
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    ExecuteBuffer_Execute
+
+    ; Reset the execute buffer
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    ExecuteBuffer_Reset
+
     ; Make sure we're not reading input until all controls are released.
     call @SetupForDebounce
 
@@ -263,10 +324,6 @@ _ModeMainMenu:
     ; Start our profiler.
     ld      hl, gMainMenuScreen.ProfilerRenderPrep
     call    ProfilerModule@Begin
-
-    ; Clear our execute buffer.
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    call    ExecuteBuffer_Reset
 
     ; Did our highlight change?
     ld      a, (gMainMenuScreen.CurrSelection)
@@ -347,6 +404,10 @@ _ModeMainMenu:
         ; Execute the execute buffer
         ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
         call    ExecuteBuffer_Execute
+
+        ; Reset the execute buffer
+        ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+        call    ExecuteBuffer_Reset
 
         ; End our profiler.
         ld      hl, gMainMenuScreen.ProfilerVBlank
