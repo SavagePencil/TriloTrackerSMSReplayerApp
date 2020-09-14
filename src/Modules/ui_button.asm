@@ -5,11 +5,37 @@
 .INCLUDE "Modules/execute_buffer.asm"
 .INCLUDE "Utils/fsm.asm"
 
+.ENUMID 0 EXPORT
+.ENUMID UI_WIDGET_CONTAINER
+.ENUMID UI_WIDGET_BUTTON
+.ENUMID UI_WIDGET_TOGGLE
+
+.ENUMID 0 EXPORT
+; Do not change the order of these, as some
+; structs depend on them.
+.ENUMID BUTTON_DISABLED
+.ENUMID BUTTON_NORMAL
+.ENUMID BUTTON_SELECTED
+.ENUMID BUTTON_PRESSED
+
+.STRUCT sUIWidgetInstance
+    ; One of UI_WIDGET_* enums
+    UIWidgetType                    DB
+    ; Pointer to an sWidgetContainerInstance (or NULL if none)
+    pParentContainer                DW
+.ENDST
+
+.STRUCT sWidgetContainerInstance
+    WidgetInstance      INSTANCEOF sUIWidgetInstance
+    pCurrSelectedWidget DW
+.ENDST
+
 .STRUCT sUIButtonDescriptor
     ; Execute Buffer payload for rendering to the nametable.
     pUploadNameTableHeader          DW
 
     ; Execute Buffer payloads for uploading pattern data to VRAM
+    ; ORDER MATTERS
     pUploadPatternPayload_Disabled  DW
     pUploadPatternPayload_Normal    DW
     pUploadPatternPayload_Selected  DW
@@ -17,40 +43,89 @@
 .ENDST
 
 .STRUCT sUIButtonInstance
-    FSM                 INSTANCEOF sFSM
+    WidgetInstance      INSTANCEOF sUIWidgetInstance
+    ; One of BUTTON_* enums
+    ButtonState         DB
+    ; Pointer to the descriptor for this button
+    pDescriptor         DW
 .ENDST
 
 .SECTION "UI Button" FREE
-UIButtonState:
-.DSTRUCT @Disabled INSTANCEOF sState VALUES
-    OnEnter     .DW _UIButton@StateFuncs@DisabledOnEnter
-.ENDST
-.DSTRUCT @Normal INSTANCEOF sState VALUES
-    OnEnter     .DW _UIButton@StateFuncs@NormalOnEnter
-.ENDST
-.DSTRUCT @Selected INSTANCEOF sState VALUES
-    OnEnter     .DW _UIButton@StateFuncs@SelectedOnEnter
-.ENDST
-.DSTRUCT @Pressed INSTANCEOF sState VALUES
-    OnEnter     .DW _UIButton@StateFuncs@PressedOnEnter
-.ENDST
 
 UIButton:
 ;==============================================================================
 ; UIButton@Init
 ; Initializes a UI button, starting in the specified state.
-; INPUTS:  DE:  Pointer to sUIButtonInstance.FSM
-;          HL:  Initial state
-;          IX:  Pointer to sUIButtonDescriptor
+; INPUTS:  IX:  Pointer to sUIButtonInstance
+;          DE:  Pointer to sUIButtonDescriptor
 ;          IY:  Pointer to ExecuteBuffer
-; OUTPUTS:  None
-; Does not preserve any registers.
+;          A:   Initial state (BUTTON_* enum)
+; OUTPUTS: IX:  Pointer to sUIButtonInstance
+;          IY:  Pointer to ExecuteBuffer
+; Does not preserve any other registers.
 ;==============================================================================
 @Init:
-    call    FSM_DE@Init
-    call    @SetVisible
+    ld      (ix + sUIButtonInstance.pDescriptor + 0), e
+    ld      (ix + sUIButtonInstance.pDescriptor + 1), d
+    call    @SetButtonState
     ret
 
+;==============================================================================
+; UIButton@SetButtonState
+; Sets the button to the indicated BUTTON_* enum state.
+; INPUTS:  IX:  Pointer to sUIButtonInstance
+;          A:   Desired state (BUTTON_* enum)
+;          IY:  Pointer to ExecuteBuffer
+; OUTPUTS: IX:  Pointer to sUIButtonInstance
+;          IY:  Pointer to ExecuteBuffer
+; Does not preserve any other registers.
+;==============================================================================
+@SetButtonState:
+    ; Store the new state
+    ld      (ix + sUIButtonInstance.ButtonState), a
+
+    ; Reserve space for the action.
+    ld      bc, _sizeof_sAction_Upload1bppToVRAM_Indirect
+    call    ExecuteBuffer_AttemptReserve_IY
+
+    ; DE points to the destination buffer.
+    ; First do the callback in the sAction_Upload1bppToVRAM_Indirect.ExecuteEntry
+    ex      de, hl
+    ld      (hl), <Action_Upload1bppToVRAM_Indirect
+    inc     hl
+    ld      (hl), >Action_Upload1bppToVRAM_Indirect
+    inc     hl
+    ex      de, hl
+
+    ; Get the descriptor.
+    ld      l, (ix + sUIButtonInstance.pDescriptor + 0)
+    ld      h, (ix + sUIButtonInstance.pDescriptor + 1)
+
+    ; Move to the payloads in the descriptor
+.REPT sUIButtonDescriptor.pUploadPatternPayload_Disabled
+    inc     hl
+.ENDR
+    ; Get the offset based on the BUTTON_* enum.
+    add     a, a
+    ld      c, a
+    ld      b, 0
+    add     hl, bc
+
+    ; HL points to the payload, and DE points to the buffer loc.
+    ; Copy the payload pointer into the buffer.
+    ldi
+    ldi
+    ret
+
+;==============================================================================
+; UIButton@SetVisible
+; Enqueues the actions to make the specified button visible in the nametable.
+; INPUTS:  IX:  Pointer to sUIButtonInstance
+;          IY:  Pointer to ExecuteBuffer
+; OUTPUTS: IX:  Pointer to sUIButtonInstance
+;          IY:  Pointer to ExecuteBuffer
+; Destroys HL, DE, BC
+;==============================================================================
 @SetVisible:
     ; Reserve space for the action.
     ld      bc, _sizeof_sAction_UploadVRAMList_Indirect
@@ -63,78 +138,23 @@ UIButton:
     inc     hl
     ld      (hl), >Action_UploadVRAMList_Indirect
     inc     hl
+    ex      de, hl
 
-    ; Get the right payload
-    ld      e, (ix + sUIButtonDescriptor.pUploadNameTableHeader + 0)
-    ld      d, (ix + sUIButtonDescriptor.pUploadNameTableHeader + 1)
-    ; Inject the pointer to the payload into the ExecuteBuffer.
-    ld      (hl), e
+    ; Get the descriptor.
+    ld      l, (ix + sUIButtonInstance.pDescriptor + 0)
+    ld      h, (ix + sUIButtonInstance.pDescriptor + 1)
+
+    ; Move to the upload to name table
+.REPT sUIButtonDescriptor.pUploadNameTableHeader
     inc     hl
-    ld      (hl), d
+.ENDR
+    ; Inject the pointer to the payload into the ExecuteBuffer.
+    ldi
+    ldi
 
     ret
 
 _UIButton:
-;==============================================================================
-; _UIButton@SetupExecBufferFor1bppUpload
-; Prepares an execute buffer to accept a 1bpp upload action.
-; INPUTS:   IY:  Pointer to ExecuteBuffer
-; OUTPUTS:  HL:  Points to loc in exec buffer to write pointer to payload.
-; Destroys BC, HL
-;==============================================================================
-@SetupExecBufferFor1bppUpload:
-    ; Reserve space for the action.
-    ld      bc, _sizeof_sAction_Upload1bppToVRAM_Indirect
-    call    ExecuteBuffer_AttemptReserve_IY
-
-    ; DE points to the destination buffer.
-    ; First do the callback in the sAction_Upload1bppToVRAM_Indirect.ExecuteEntry
-    ex      de, hl
-    ld      (hl), <Action_Upload1bppToVRAM_Indirect
-    inc     hl
-    ld      (hl), >Action_Upload1bppToVRAM_Indirect
-    inc     hl
-    ret
-
-
-@StateFuncs:
-
-.MACRO UI_BUTTON_ENQUEUE_PAYLOAD ARGS PAYLOAD_OFFSET
-    ; Prep the execute buffer
-    call    @SetupExecBufferFor1bppUpload
-    ; Get the right payload
-    ld      e, (ix + PAYLOAD_OFFSET + 0)
-    ld      d, (ix + PAYLOAD_OFFSET + 1)
-    ; Inject the pointer to the payload into the ExecuteBuffer.
-    ld      (hl), e
-    inc     hl
-    ld      (hl), d
-.ENDM
-
-@@NormalOnEnter:
-    UI_BUTTON_ENQUEUE_PAYLOAD sUIButtonDescriptor.pUploadPatternPayload_Normal
-
-    and     a   ; Clear carry
-    ret
-
-@@SelectedOnEnter:
-    UI_BUTTON_ENQUEUE_PAYLOAD sUIButtonDescriptor.pUploadPatternPayload_Selected
-
-    and     a   ; Clear carry
-    ret
-
-@@PressedOnEnter:
-    UI_BUTTON_ENQUEUE_PAYLOAD sUIButtonDescriptor.pUploadPatternPayload_Pressed
-
-    and     a   ; Clear carry
-    ret
-
-@@DisabledOnEnter:
-    UI_BUTTON_ENQUEUE_PAYLOAD sUIButtonDescriptor.pUploadPatternPayload_Disabled
-
-    and     a   ; Clear carry
-    ret
-
 .ENDS
 
 .ENDIF  ;__UI_BUTTON_ASM__

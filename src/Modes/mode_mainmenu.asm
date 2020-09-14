@@ -209,41 +209,47 @@ _ModeMainMenu:
     call    @EnqueueOptionHighlightChange
 
     ; Create all of our controls.
-    ld      de, gMainMenuScreen.UIButton_Profiler.FSM
-    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      ix, gMainMenuScreen.UIButton_Profiler
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      ix, Mode_MainMenu_Data@UIButtons@ProfileButton
+    ld      de, Mode_MainMenu_Data@UIButtons@ProfileButton
+    ld      a, BUTTON_DISABLED
     call    UIButton@Init
+    call    UIButton@SetVisible
 
-    ld      de, gMainMenuScreen.UIButton_Visualizer.FSM
-    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      ix, gMainMenuScreen.UIButton_Visualizer
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      ix, Mode_MainMenu_Data@UIButtons@VisualizerButton
+    ld      de, Mode_MainMenu_Data@UIButtons@VisualizerButton
+    ld      a, BUTTON_DISABLED
     call    UIButton@Init
+    call    UIButton@SetVisible    
 
-    ld      de, gMainMenuScreen.UIButton_LoadSong.FSM
-    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      ix, gMainMenuScreen.UIButton_LoadSong
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      ix, Mode_MainMenu_Data@UIButtons@LoadSongButton
+    ld      de, Mode_MainMenu_Data@UIButtons@LoadSongButton
+    ld      a, BUTTON_DISABLED
     call    UIButton@Init
+    call    UIButton@SetVisible
 
-    ld      de, gMainMenuScreen.UIButton_Play.FSM
-    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      ix, gMainMenuScreen.UIButton_Play
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      ix, Mode_MainMenu_Data@UIButtons@PlayButton
+    ld      de, Mode_MainMenu_Data@UIButtons@PlayButton
+    ld      a, BUTTON_DISABLED
     call    UIButton@Init
+    call    UIButton@SetVisible
 
-    ld      de, gMainMenuScreen.UIButton_Fade.FSM
-    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      ix, gMainMenuScreen.UIButton_Fade
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      ix, Mode_MainMenu_Data@UIButtons@FadeButton
+    ld      de, Mode_MainMenu_Data@UIButtons@FadeButton
+    ld      a, BUTTON_DISABLED
     call    UIButton@Init
+    call    UIButton@SetVisible
 
-    ld      de, gMainMenuScreen.UIButton_Transpose.FSM
-    ld      hl, UIButtonState@Disabled                  ; Initial state
+    ld      ix, gMainMenuScreen.UIButton_Transpose
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      ix, Mode_MainMenu_Data@UIButtons@TransposeButton
+    ld      de, Mode_MainMenu_Data@UIButtons@TransposeButton
+    ld      a, BUTTON_DISABLED
     call    UIButton@Init
+    call    UIButton@SetVisible
 
     ; With all of our graphical changes queued, go ahead and flush the execute buffer.
     ; Execute the execute buffer
