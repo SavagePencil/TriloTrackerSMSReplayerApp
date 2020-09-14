@@ -3,12 +3,7 @@
 
 .INCLUDE "Actions/action_upload_vramdata.asm"
 .INCLUDE "Modules/execute_buffer.asm"
-.INCLUDE "Utils/fsm.asm"
-
-.ENUMID 0 EXPORT
-.ENUMID UI_WIDGET_CONTAINER
-.ENUMID UI_WIDGET_BUTTON
-.ENUMID UI_WIDGET_TOGGLE
+.INCLUDE "Modules/ui.asm"
 
 .ENUMID 0 EXPORT
 ; Do not change the order of these, as some
@@ -17,18 +12,6 @@
 .ENUMID BUTTON_NORMAL
 .ENUMID BUTTON_SELECTED
 .ENUMID BUTTON_PRESSED
-
-.STRUCT sUIWidgetInstance
-    ; One of UI_WIDGET_* enums
-    UIWidgetType                    DB
-    ; Pointer to an sWidgetContainerInstance (or NULL if none)
-    pParentContainer                DW
-.ENDST
-
-.STRUCT sWidgetContainerInstance
-    WidgetInstance      INSTANCEOF sUIWidgetInstance
-    pCurrSelectedWidget DW
-.ENDST
 
 .STRUCT sUIButtonDescriptor
     ; Execute Buffer payload for rendering to the nametable.
@@ -51,13 +34,13 @@
 .ENDST
 
 .SECTION "UI Button" FREE
-
 UIButton:
 ;==============================================================================
 ; UIButton@Init
 ; Initializes a UI button, starting in the specified state.
 ; INPUTS:  IX:  Pointer to sUIButtonInstance
-;          DE:  Pointer to sUIButtonDescriptor
+;          HL:  Pointer to sUIButtonDescriptor
+;          DE:  Pointer to parent sUIContainerInstance
 ;          IY:  Pointer to ExecuteBuffer
 ;          A:   Initial state (BUTTON_* enum)
 ; OUTPUTS: IX:  Pointer to sUIButtonInstance
@@ -65,8 +48,16 @@ UIButton:
 ; Does not preserve any other registers.
 ;==============================================================================
 @Init:
-    ld      (ix + sUIButtonInstance.pDescriptor + 0), e
-    ld      (ix + sUIButtonInstance.pDescriptor + 1), d
+    ; Set Widget Instance params.
+    ld      (ix + sUIButtonInstance.WidgetInstance.UIWidgetType), UI_WIDGET_TYPE_BUTTON
+    ld      (ix + sUIButtonInstance.WidgetInstance.pParentContainer + 0), e
+    ld      (ix + sUIButtonInstance.WidgetInstance.pParentContainer + 1), d
+
+    ; Pointer to our descriptor (which may be in ROM)
+    ld      (ix + sUIButtonInstance.pDescriptor + 0), l
+    ld      (ix + sUIButtonInstance.pDescriptor + 1), h
+
+    ; Pass the initial state in A
     call    @SetButtonState
     ret
 

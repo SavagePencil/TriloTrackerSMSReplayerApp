@@ -5,7 +5,7 @@
 .include "Modules/debounce_module.asm"
 .include "Modules/execute_buffer.asm"
 .include "Modules/profiler_module.asm"
-.INCLUDE "Modules/ui_button.asm"
+.include "UI/songplayer_controls.asm"
 .include "Utils/macros.asm"
 .include "Utils/tile_routines.asm"
 
@@ -33,13 +33,11 @@
     .ENDU
 
     ; UI Controls
+    UIContainer_PlayerControls  INSTANCEOF sUIContainer_SongPlayerControls
+
     UIButton_Profiler           INSTANCEOF sUIButtonInstance
     UIButton_Visualizer         INSTANCEOF sUIButtonInstance
     UIButton_LoadSong           INSTANCEOF sUIButtonInstance
-    UIButton_Play               INSTANCEOF sUIButtonInstance
-    UIButton_Pause              INSTANCEOF sUIButtonInstance
-    UIButton_Fade               INSTANCEOF sUIButtonInstance
-    UIButton_Transpose          INSTANCEOF sUIButtonInstance
 
     ; Create a profiler for each section
     ProfilerUpdate              INSTANCEOF sProfilerInstance
@@ -211,42 +209,24 @@ _ModeMainMenu:
     ; Create all of our controls.
     ld      ix, gMainMenuScreen.UIButton_Profiler
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, Mode_MainMenu_Data@UIButtons@ProfileButton
+    ld      hl, Mode_MainMenu_Data@UIButtons@ProfileButton
+    ld      de, $0000   ; Parent container
     ld      a, BUTTON_DISABLED
     call    UIButton@Init
     call    UIButton@SetVisible
 
     ld      ix, gMainMenuScreen.UIButton_Visualizer
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, Mode_MainMenu_Data@UIButtons@VisualizerButton
+    ld      hl, Mode_MainMenu_Data@UIButtons@VisualizerButton
+    ld      de, $0000   ; Parent container    
     ld      a, BUTTON_DISABLED
     call    UIButton@Init
     call    UIButton@SetVisible    
 
     ld      ix, gMainMenuScreen.UIButton_LoadSong
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, Mode_MainMenu_Data@UIButtons@LoadSongButton
-    ld      a, BUTTON_DISABLED
-    call    UIButton@Init
-    call    UIButton@SetVisible
-
-    ld      ix, gMainMenuScreen.UIButton_Play
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, Mode_MainMenu_Data@UIButtons@PlayButton
-    ld      a, BUTTON_DISABLED
-    call    UIButton@Init
-    call    UIButton@SetVisible
-
-    ld      ix, gMainMenuScreen.UIButton_Fade
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, Mode_MainMenu_Data@UIButtons@FadeButton
-    ld      a, BUTTON_DISABLED
-    call    UIButton@Init
-    call    UIButton@SetVisible
-
-    ld      ix, gMainMenuScreen.UIButton_Transpose
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, Mode_MainMenu_Data@UIButtons@TransposeButton
+    ld      hl, Mode_MainMenu_Data@UIButtons@LoadSongButton
+    ld      de, $0000   ; Parent container
     ld      a, BUTTON_DISABLED
     call    UIButton@Init
     call    UIButton@SetVisible
