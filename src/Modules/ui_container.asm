@@ -1,10 +1,8 @@
 .IFNDEF __UI_CONTAINER_ASM__
 .DEFINE __UI_CONTAINER_ASM__
-.INCLUDE "Modules/ui.asm"
 .INCLUDE "Modules/ui_button.asm"
 
 .STRUCT sUIContainerInstance
-    WidgetInstance      INSTANCEOF sUIWidgetInstance
     ; Pointer to the descriptor for this container
     pDescriptor         DW
 
@@ -30,14 +28,10 @@ UIContainer:
 ; Initializes a UI container.
 ; INPUTS:  IX:  Pointer to sUIContainerInstance
 ;          DE:  Pointer to sUIContainerDescriptor
-;          HL:  Pointer to parent sUIContainerInstance
 ; OUTPUTS: None
 ; Does not alter any registers.
 ;==============================================================================
 @Init:
-    ld      (ix + sUIContainerInstance.WidgetInstance.UIWidgetType), UI_WIDGET_TYPE_CONTAINER
-    ld      (ix + sUIContainerInstance.WidgetInstance.pParentContainer + 0), l
-    ld      (ix + sUIContainerInstance.WidgetInstance.pParentContainer + 1), h
     ld      (ix + sUIContainerInstance.pDescriptor + 0), e
     ld      (ix + sUIContainerInstance.pDescriptor + 1), d
     ; Start with nothing selected.

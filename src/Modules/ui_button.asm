@@ -3,7 +3,6 @@
 
 .INCLUDE "Actions/action_upload_vramdata.asm"
 .INCLUDE "Modules/execute_buffer.asm"
-.INCLUDE "Modules/ui.asm"
 
 .ENUMID 0 EXPORT
 ; Do not change the order of these, as some
@@ -26,7 +25,6 @@
 .ENDST
 
 .STRUCT sUIButtonInstance
-    WidgetInstance      INSTANCEOF sUIWidgetInstance
     ; One of BUTTON_* enums
     ButtonState         DB
     ; Pointer to the descriptor for this button
@@ -40,25 +38,16 @@ UIButton:
 ; Initializes a UI button, starting in the specified state.
 ; INPUTS:  IX:  Pointer to sUIButtonInstance
 ;          HL:  Pointer to sUIButtonDescriptor
-;          DE:  Pointer to parent sUIContainerInstance
 ;          IY:  Pointer to ExecuteBuffer
-;          A:   Initial state (BUTTON_* enum)
 ; OUTPUTS: IX:  Pointer to sUIButtonInstance
 ;          IY:  Pointer to ExecuteBuffer
 ; Does not preserve any other registers.
 ;==============================================================================
 @Init:
-    ; Set Widget Instance params.
-    ld      (ix + sUIButtonInstance.WidgetInstance.UIWidgetType), UI_WIDGET_TYPE_BUTTON
-    ld      (ix + sUIButtonInstance.WidgetInstance.pParentContainer + 0), e
-    ld      (ix + sUIButtonInstance.WidgetInstance.pParentContainer + 1), d
-
     ; Pointer to our descriptor (which may be in ROM)
     ld      (ix + sUIButtonInstance.pDescriptor + 0), l
     ld      (ix + sUIButtonInstance.pDescriptor + 1), h
 
-    ; Pass the initial state in A
-    call    @SetButtonState
     ret
 
 ;==============================================================================

@@ -32,12 +32,12 @@
         TempUpload1bppAction        INSTANCEOF sAction_Upload1bppToVRAM_Implicit
     .ENDU
 
-    ; UI Controls
-    UIContainer_PlayerControls  INSTANCEOF sUIContainer_SongPlayerControls
-
     UIButton_Profiler           INSTANCEOF sUIButtonInstance
     UIButton_Visualizer         INSTANCEOF sUIButtonInstance
     UIButton_LoadSong           INSTANCEOF sUIButtonInstance
+
+    ; Which of our containers is currently selected?
+    pCurrContainerSelection     DW
 
     ; Create a profiler for each section
     ProfilerUpdate              INSTANCEOF sProfilerInstance
@@ -230,6 +230,15 @@ _ModeMainMenu:
     ld      a, BUTTON_DISABLED
     call    UIButton@Init
     call    UIButton@SetVisible
+
+    ; Init the Song Player Controls
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    SongPlayerControls@Init
+
+    ; Start our UI for the initial selection.
+    ld      ix, gUIContainer_PlayerControls
+    ld      (gMainMenuScreen.pCurrContainerSelection), ix
+    call    UIContainer@OnSetSelected
 
     ; With all of our graphical changes queued, go ahead and flush the execute buffer.
     ; Execute the execute buffer
