@@ -5,7 +5,8 @@
 .include "Modules/debounce_module.asm"
 .include "Modules/execute_buffer.asm"
 .include "Modules/profiler_module.asm"
-.include "UI/songplayer_controls.asm"
+.include "UI/modeselect_container.asm"
+.include "UI/playercontrols_container.asm"
 .include "Utils/macros.asm"
 .include "Utils/tile_routines.asm"
 
@@ -17,10 +18,6 @@
     ; Module used to ensure the player releases buttons before we accept input from them.
     Controller1DebounceModule   INSTANCEOF sDebounceModule_Instance
 
-    ; Which menu item is currently selected?
-    CurrSelection               DB
-    PrevSelection               DB
-
     ; What graphics commands do we intend to execute?
     ExecuteBufferDescriptor     INSTANCEOF sExecuteBufferDescriptor
     ExecuteBufferMemory         DSB 128 ; Bytes of RAM for the Execute Buffer
@@ -31,10 +28,6 @@
     .NEXTU
         TempUpload1bppAction        INSTANCEOF sAction_Upload1bppToVRAM_Implicit
     .ENDU
-
-    UIButton_Profiler           INSTANCEOF sUIButtonInstance
-    UIButton_Visualizer         INSTANCEOF sUIButtonInstance
-    UIButton_LoadSong           INSTANCEOF sUIButtonInstance
 
     ; Which of our containers is currently selected?
     pCurrContainerSelection     DW
@@ -50,20 +43,6 @@
 .ENDS
 
 .SECTION "Mode - Main Menu" FREE
-
-; Constants for menu selection
-.ENUMID 0
-.ENUMID MAIN_MENU_OPTION_LOAD_SONG
-.ENUMID MAIN_MENU_OPTION_PLAY_SONG
-.ENUMID MAIN_MENU_OPTION_TOTAL_OPTIONS
-
-.DEFINE MAIN_MENU_OPTIONS_COLUMN            8
-.DEFINE MAIN_MENU_OPTIONS_FIRST_ROW         6
-; #/rows beteween options
-.DEFINE MAIN_MENU_OPTIONS_ROW_SPACING       2
-
-; Which column does the highlight start at?
-.DEFINE MAIN_MENU_OPTION_HIGHLIGHT_COLUMN   5
 
 ; What line do we start rendering the profiling info at?
 .DEFINE MAIN_MENU_PROFILER_HBLANK_LINE      100
@@ -176,67 +155,16 @@ _ModeMainMenu:
     ld      hl, Mode_MainMenu_Data@Strings@Instructions2
     call    VDP_UploadStringToNameTable
 
-
-    ; Load Song
-    ld      e, MAIN_MENU_OPTIONS_COLUMN    ; Col
-    ld      d, MAIN_MENU_OPTIONS_FIRST_ROW + ( MAIN_MENU_OPTION_LOAD_SONG * MAIN_MENU_OPTIONS_ROW_SPACING )    ; Row
-    
-    ld      b, Mode_MainMenu_Data@Strings@LoadSong@End - Mode_MainMenu_Data@Strings@LoadSong ; Len
-    ld      c, $00  ; Common attributes
-    ld      hl, Mode_MainMenu_Data@Strings@LoadSong
-    call    VDP_UploadStringToNameTable
-
-    ; Play Song
-    ld      e, MAIN_MENU_OPTIONS_COLUMN    ; Col
-    ld      d, MAIN_MENU_OPTIONS_FIRST_ROW + ( MAIN_MENU_OPTION_PLAY_SONG * MAIN_MENU_OPTIONS_ROW_SPACING )    ; Row
-    
-    ld      b, Mode_MainMenu_Data@Strings@PlaySong@End - Mode_MainMenu_Data@Strings@PlaySong    ; Len
-    ld      c, $00  ; Common attributes
-    ld      hl, Mode_MainMenu_Data@Strings@PlaySong
-    call    VDP_UploadStringToNameTable
-
-    ; Start at the first option.
-    xor     a
-    ld      ( gMainMenuScreen.CurrSelection ), a
-    ld      ( gMainMenuScreen.PrevSelection ), a
-
-    ; Render the current selection.
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      de, Mode_MainMenu_Data@Strings@Option_Selected
-    ld      b, Mode_MainMenu_Data@Strings@Option_Selected@End - Mode_MainMenu_Data@Strings@Option_Selected    ; Len
-    call    @EnqueueOptionHighlightChange
-
-    ; Create all of our controls.
-    ld      ix, gMainMenuScreen.UIButton_Profiler
+    ; Init the Mode Select Controls Container
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      hl, Mode_MainMenu_Data@UIButtons@ProfileButton
-    ld      de, $0000   ; Parent container
-    ld      a, BUTTON_DISABLED
-    call    UIButton@Init
-    call    UIButton@SetVisible
+    call    ModeSelectControlsContainer@Init
 
-    ld      ix, gMainMenuScreen.UIButton_Visualizer
+    ; Init the Song Player Controls Container
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      hl, Mode_MainMenu_Data@UIButtons@VisualizerButton
-    ld      de, $0000   ; Parent container    
-    ld      a, BUTTON_DISABLED
-    call    UIButton@Init
-    call    UIButton@SetVisible    
-
-    ld      ix, gMainMenuScreen.UIButton_LoadSong
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      hl, Mode_MainMenu_Data@UIButtons@LoadSongButton
-    ld      de, $0000   ; Parent container
-    ld      a, BUTTON_DISABLED
-    call    UIButton@Init
-    call    UIButton@SetVisible
-
-    ; Init the Song Player Controls
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    call    SongPlayerControls@Init
+    call    PlayerControlsContainer@Init
 
     ; Start our UI for the initial selection.
-    ld      ix, gUIContainer_PlayerControls
+    ld      ix, gUIContainer_ModeSelectControls
     ld      (gMainMenuScreen.pCurrContainerSelection), ix
     call    UIContainer@OnSetSelected
 
@@ -284,10 +212,6 @@ _ModeMainMenu:
     ld      hl, gMainMenuScreen.ProfilerUpdate
     call    ProfilerModule@Begin
 
-    ; The previous selection is now the current one.
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      (gMainMenuScreen.PrevSelection), a
-
     ; Read input.
     call    InputManager_OnUpdate
 
@@ -301,12 +225,33 @@ _ModeMainMenu:
     call    DebounceModule@IsDebounced
     jr      nz, @@InputCheckComplete    ; If NZ, that means we're not yet debounced.
 
+    ; Start with assumption that we're not throwing input from another container.
+    ld      de, $0000
+@@ContainerHandleNav:
     ; We're debounced.  See if any inputs were pressed.
     ld      a, (gMainMenuScreen.Controller1DebounceModule.CurrentVal)
-    bit     CONTROLLER_JOYPAD_DOWN_BITPOS, a
-    call    z, @MoveSelection@Down
-    bit     CONTROLLER_JOYPAD_UP_BITPOS, a
-    call    z, @MoveSelection@Up
+    ld      b, a
+
+    ; Pass the inputs on to the currently selected container.
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      ix, (gMainMenuScreen.pCurrContainerSelection)
+    call    UIContainer@OnNav
+    ; If no carry, then we don't need to throw the nav attempt to anyone else.
+    jr      nc, @@NavHandled
+
+    ; Otherwise, we have a new container in DE and it becomes our currently-selected.
+    ld      (gMainMenuScreen.pCurrContainerSelection), de
+
+    ; Let the new container know that it is selected.
+    push    ix
+        ld      ix, (gMainMenuScreen.pCurrContainerSelection)
+        call    UIContainer@OnSetSelected
+    pop     de
+    jr      @@ContainerHandleNav
+
+@@NavHandled:
+    ; Now debounce the controller
+    call    @SetupForDebounce
 
 @@InputCheckComplete:
 
@@ -319,25 +264,6 @@ _ModeMainMenu:
     ; Start our profiler.
     ld      hl, gMainMenuScreen.ProfilerRenderPrep
     call    ProfilerModule@Begin
-
-    ; Did our highlight change?
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      b, a
-    ld      a, (gMainMenuScreen.PrevSelection)
-    cp      b
-    jr      z, @@ChangeCheckDone
-    ; Selection changed.  Erase the old highlight.
-    ld      de, Mode_MainMenu_Data@Strings@Option_NotSelected
-    ld      b, Mode_MainMenu_Data@Strings@Option_NotSelected@End - Mode_MainMenu_Data@Strings@Option_NotSelected    ; Len
-    call    @EnqueueOptionHighlightChange
-
-    ; Draw the new highlight.
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      de, Mode_MainMenu_Data@Strings@Option_Selected
-    ld      b, Mode_MainMenu_Data@Strings@Option_Selected@End - Mode_MainMenu_Data@Strings@Option_Selected    ; Len
-    call    @EnqueueOptionHighlightChange
-
-@@ChangeCheckDone:
 
     ; End our profiler.
     ld      hl, gMainMenuScreen.ProfilerRenderPrep
@@ -415,34 +341,6 @@ _ModeMainMenu:
     ret
 
 ;==============================================================================
-; Moves the currently selected option.  Will enqueue any VRAM updates
-; necessary.
-;==============================================================================
-@MoveSelection:
-@@Down:
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      (gMainMenuScreen.PrevSelection), a
-    inc     a
-    cp      MAIN_MENU_OPTION_TOTAL_OPTIONS
-    jr      nz, @@SetNext
-    xor     a   ; Start back at the top of the list.
-    jr      @@SetNext
-
-@@Up:
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      (gMainMenuScreen.PrevSelection), a
-    dec     a
-    jp      p, @@SetNext
-    ld      a, MAIN_MENU_OPTION_TOTAL_OPTIONS - 1   ; Wrap to bottom of list.
-    ; FALL THROUGH
-@@SetNext:
-    ld      (gMainMenuScreen.CurrSelection), a
-
-    ; Wait for another debounce.
-    call    @SetupForDebounce
-    ret
-
-;==============================================================================
 ; After an input is detected, sets up to ensure no other inputs are
 ; processed until all are released.
 ;==============================================================================
@@ -462,48 +360,6 @@ _ModeMainMenu:
     ld      hl, DebounceModule@WaitForDebounceState
     ld      ix, gMainMenuScreen.Controller1DebounceModule.DebounceFSM
     call    FSM_IX@Init
-
-    ret
-
-;==============================================================================
-; Enqueues VRAM changes for currently selected item.
-; A:  Option index to change
-; DE: String to render
-; B:  Length of string
-;==============================================================================
-@EnqueueOptionHighlightChange:
-    ; Figure out the row offset.
-    ld      c, 0
--:
-    and     a
-    jr      z, @@OffsetFound
-
-.REPT MAIN_MENU_OPTIONS_ROW_SPACING
-    inc     c
-.ENDR
-    dec     a
-    jr      -
-
-@@OffsetFound:
-    ld      a, MAIN_MENU_OPTIONS_FIRST_ROW
-    add     a, c
-
-    ; Fill out our execute buffer action.
-    ld      iy, gMainMenuScreen.TempUploadStringAction
-    ld      (iy + sAction_UploadString_Indirect.ExecuteEntry.CallbackFunction + 0), <Action_UploadString_Indirect
-    ld      (iy + sAction_UploadString_Indirect.ExecuteEntry.CallbackFunction + 1), >Action_UploadString_Indirect
-    ld      (iy + sAction_UploadString_Indirect.Length ), b
-    ld      (iy + sAction_UploadString_Indirect.pData + 0), e
-    ld      (iy + sAction_UploadString_Indirect.pData + 1), d
-    ld      (iy + sAction_UploadString_Indirect.Row), a
-    ld      (iy + sAction_UploadString_Indirect.Col), MAIN_MENU_OPTION_HIGHLIGHT_COLUMN
-    ld      (iy + sAction_UploadString_Indirect.Attribute), $00
-
-    ; The action is ready.  Add it to the ExecuteBuffer.
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, gMainMenuScreen.TempUploadStringAction
-    ld      bc, _sizeof_sAction_UploadString_Indirect
-    call    ExecuteBuffer_AttemptEnqueue_IY
 
     ret
 

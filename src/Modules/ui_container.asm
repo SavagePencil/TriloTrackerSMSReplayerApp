@@ -2,12 +2,15 @@
 .DEFINE __UI_CONTAINER_ASM__
 .INCLUDE "Modules/ui_button.asm"
 
+; Constant for when no widget is selected.
+.DEFINE UI_CONTAINER_NO_WIDGET_SELECTED_INDEX   $FF
+
 .STRUCT sUIContainerInstance
     ; Pointer to the descriptor for this container
-    pDescriptor         DW
+    pDescriptor             DW
 
-    ; Pointer to the currently selected widget
-    pCurrSelectedWidget DW
+    ; Index of the currently selected widget
+    CurrSelectedWidgetIndex DB
 .ENDST
 
 ; Function pointers for an instance, which may be in ROM.
@@ -35,8 +38,7 @@ UIContainer:
     ld      (ix + sUIContainerInstance.pDescriptor + 0), e
     ld      (ix + sUIContainerInstance.pDescriptor + 1), d
     ; Start with nothing selected.
-    ld      (ix + sUIContainerInstance.pCurrSelectedWidget + 0), $00
-    ld      (ix + sUIContainerInstance.pCurrSelectedWidget + 1), $00
+    ld      (ix + sUIContainerInstance.CurrSelectedWidgetIndex), UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
     ret
 
 ;==============================================================================
@@ -45,14 +47,17 @@ UIContainer:
 ; INPUTS:  IX:  Pointer to sUIContainerInstance
 ;          DE:  Event offset in sUIContainerDescriptor 
 ;               (e.g., sUIContainerDescriptor.OnUpdate)
+;          TBD: See specific events for other inputs/outputs.
 ; OUTPUTS: None
 ; Potentially destroys all registers.
 ;==============================================================================
-@OnEvent:
+.MACRO UICONTAINER_ONEVENT ARGS EVENT_OFFSET
     ; Get the descriptor.
     ld      l, (ix + sUIContainerInstance.pDescriptor + 0)
     ld      h, (ix + sUIContainerInstance.pDescriptor + 1)
-    add     hl, de
+    .REPT EVENT_OFFSET
+        inc hl
+    .ENDR
     ld      a, (hl)
     inc     hl
     ld      h, (hl)
@@ -61,18 +66,36 @@ UIContainer:
     ret     z       ; Get out if the event handler was NULL.
     ; HL is valid.  Jump there.
     jp      (hl)
+.ENDM
 
 @Update:
-    ld      de, sUIContainerDescriptor.OnUpdate
-    jp      @OnEvent
+    UICONTAINER_ONEVENT sUIContainerDescriptor.OnUpdate
 
+;==============================================================================
+; @OnNav
+; Allows the container to make a decision about any nav requests.  May cause
+; it to throw the input over to another container.
+; INPUTS:   B:  Controller state (combo of CONTROLLER_JOYPAD_* flags)
+;          DE:  Container that threw to us (NULL if none)
+;          IY:  Execute Buffer for any VRAM changes that need to be queued.
+; OUTPUTS: DE:  Container to throw to (only valid if carry is set)
+;          SETS CARRY FLAG IF THE CALLER NEEDS TO THROW TO A NEW CONTAINER.
+; Destroys A, C, HL, IX
+;==============================================================================
 @OnNav:
-    ld      de, sUIContainerDescriptor.OnNav
-    jp      @OnEvent
+    UICONTAINER_ONEVENT sUIContainerDescriptor.OnNav
 
+;==============================================================================
+; @OnSetSelected
+; Makes the given container the selected one.  A container may have memory of
+; which control was last selected, and select it, or it may override to a
+; default.
+; INPUTS:  IY:  Execute Buffer for any VRAM changes that need to be queued.
+; OUTPUTS: None
+; Destroys A, BC, DE, HL, IX
+;==============================================================================
 @OnSetSelected:
-    ld      de, sUIContainerDescriptor.OnSetSelected
-    jp      @OnEvent
+    UICONTAINER_ONEVENT sUIContainerDescriptor.OnSetSelected
 
 .ENDS
 

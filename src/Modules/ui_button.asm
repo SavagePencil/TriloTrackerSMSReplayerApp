@@ -7,28 +7,34 @@
 .ENUMID 0 EXPORT
 ; Do not change the order of these, as some
 ; structs depend on them.
-.ENUMID BUTTON_DISABLED
-.ENUMID BUTTON_NORMAL
-.ENUMID BUTTON_SELECTED
-.ENUMID BUTTON_PRESSED
+.ENUMID BUTTON_STATE_DISABLED
+.ENUMID BUTTON_STATE_NORMAL
+.ENUMID BUTTON_STATE_SELECTED
+.ENUMID BUTTON_STATE_PRESSED
+.ENUMID BUTTON_STATE_COUNT
 
 .STRUCT sUIButtonDescriptor
     ; Execute Buffer payload for rendering to the nametable.
     pUploadNameTableHeader          DW
 
     ; Execute Buffer payloads for uploading pattern data to VRAM
-    ; ORDER MATTERS
-    pUploadPatternPayload_Disabled  DW
-    pUploadPatternPayload_Normal    DW
-    pUploadPatternPayload_Selected  DW
-    pUploadPatternPayload_Pressed   DW
+    ; Uses BUTTON_STATE_* as index.
+    .UNION
+        pUploadPatternPayloadForButtonState DSW BUTTON_STATE_COUNT
+    .NEXTU
+        pUploadPatternPayload_Disabled  DW
+        pUploadPatternPayload_Normal    DW
+        pUploadPatternPayload_Selected  DW
+        pUploadPatternPayload_Pressed   DW
+    .ENDU
 .ENDST
 
 .STRUCT sUIButtonInstance
-    ; One of BUTTON_* enums
-    ButtonState         DB
     ; Pointer to the descriptor for this button
     pDescriptor         DW
+
+    ; One of BUTTON_STATE_* enums
+    ButtonState         DB
 .ENDST
 
 .SECTION "UI Button" FREE
@@ -52,9 +58,9 @@ UIButton:
 
 ;==============================================================================
 ; UIButton@SetButtonState
-; Sets the button to the indicated BUTTON_* enum state.
+; Sets the button to the indicated BUTTON_STATE_* enum state.
 ; INPUTS:  IX:  Pointer to sUIButtonInstance
-;          A:   Desired state (BUTTON_* enum)
+;          A:   Desired state (BUTTON_STATE_* enum)
 ;          IY:  Pointer to ExecuteBuffer
 ; OUTPUTS: IX:  Pointer to sUIButtonInstance
 ;          IY:  Pointer to ExecuteBuffer
@@ -82,10 +88,10 @@ UIButton:
     ld      h, (ix + sUIButtonInstance.pDescriptor + 1)
 
     ; Move to the payloads in the descriptor
-.REPT sUIButtonDescriptor.pUploadPatternPayload_Disabled
+.REPT sUIButtonDescriptor.pUploadPatternPayloadForButtonState
     inc     hl
 .ENDR
-    ; Get the offset based on the BUTTON_* enum.
+    ; Get the offset based on the BUTTON_STATE_* enum.
     add     a, a
     ld      c, a
     ld      b, 0
