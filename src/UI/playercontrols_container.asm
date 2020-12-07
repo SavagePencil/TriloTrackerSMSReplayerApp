@@ -8,6 +8,7 @@
 
 .ENUMID 0 EXPORT
 ; These are laid out Left to Right in ascending order.
+.ENUMID PLAYERCONTROLS_BUTTON_LOADSONG
 .ENUMID PLAYERCONTROLS_BUTTON_PLAYPAUSE
 .ENUMID PLAYERCONTROLS_BUTTON_FADE
 .ENUMID PLAYERCONTROLS_BUTTON_TRANSPOSE
@@ -22,6 +23,7 @@
         UIButtons                   INSTANCEOF sUIButtonInstance PLAYERCONTROLS_BUTTON_COUNT
     .NEXTU
         ; Dependent on SONGPLAYER_BUTTON_* enum ordering.
+        UIButton_LoadSong           INSTANCEOF sUIButtonInstance        
         UIButton_PlayPause          INSTANCEOF sUIButtonInstance
         UIButton_Fade               INSTANCEOF sUIButtonInstance
         UIButton_Transpose          INSTANCEOF sUIButtonInstance
@@ -49,6 +51,11 @@ PlayerControlsContainer:
 
     ; Now each of our child buttons.
 
+    ; LOADSONG
+    ld      ix, gUIContainer_PlayerControls.UIButton_LoadSong
+    ld      hl, PlayerControls_Container_UIDefs@LoadSongButton
+    call    UIButton@Init
+
     ; PLAYPAUSE (starts as Play)
     ld      ix, gUIContainer_PlayerControls.UIButton_PlayPause
     ld      hl, PlayerControls_Container_UIDefs@PlayButton
@@ -65,6 +72,12 @@ PlayerControlsContainer:
     call    UIButton@Init
 
     ; Set each button visible and initial state.
+    ; LOADSONG
+    ld      ix, gUIContainer_PlayerControls.UIButton_LoadSong
+    ld      a, BUTTON_STATE_DISABLED
+    call    UIButton@SetButtonState
+    call    UIButton@SetVisible
+
     ; PLAYPAUSE
     ld      ix, gUIContainer_PlayerControls.UIButton_PlayPause
     ld      a, BUTTON_STATE_DISABLED
@@ -168,7 +181,7 @@ _PlayerControlsContainer:
     jp      p, @@CheckSelectable
     ; Yes, we rolled over.  Send it to the mode select.
     ld      de, gUIContainer_ModeSelectControls
-    ld      c, MODESELECT_BUTTON_LOADSONG
+    ld      c, MODESELECT_BUTTON_INFO
     and     a   ; Clear carry to indicate keep throwing.
     ret
 
@@ -285,6 +298,8 @@ _PlayerControlsContainer:
 ; Destroys A, IX, Carry
 ;==============================================================================
 @GetButtonFromIndex:
+    cp      PLAYERCONTROLS_BUTTON_LOADSONG
+    jr      z, @@LoadSong
     cp      PLAYERCONTROLS_BUTTON_PLAYPAUSE
     jr      z, @@PlayPause
     cp      PLAYERCONTROLS_BUTTON_FADE
@@ -294,6 +309,10 @@ _PlayerControlsContainer:
     ; Otherwise failed.
     ld      ix, $0000
     scf
+    ret
+@@LoadSong:
+    ld      ix, gUIContainer_PlayerControls.UIButton_LoadSong
+    and     a
     ret
 @@PlayPause:
     ld      ix, gUIContainer_PlayerControls.UIButton_PlayPause

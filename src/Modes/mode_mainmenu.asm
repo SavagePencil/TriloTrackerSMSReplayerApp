@@ -166,7 +166,7 @@ _ModeMainMenu:
     ; Start our UI for the initial selection.
     ld      ix, gUIContainer_PlayerControls
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      c, PLAYERCONTROLS_BUTTON_PLAYPAUSE
+    ld      c, PLAYERCONTROLS_BUTTON_LOADSONG
     ld      b, 1    ; Indicate selection
     ld      (gMainMenuScreen.pCurrContainerSelection), ix
     call    UIContainer@OnWidgetSelectionStatusChanged
@@ -260,7 +260,7 @@ _ModeMainMenu:
     ; Was the move valid?
     ld      a, c
     cp      UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
-    jr      z, @@NavResolved
+    jr      z, @@NavResolved    ; If Z, move was INVALID but we're done here.
     ; Move was valid.
     ld      iy, gMainMenuScreen.ExecuteBufferDescriptor ; Get the execute buffer for gfx changes.
     push    bc  ; Preserve the new choice index

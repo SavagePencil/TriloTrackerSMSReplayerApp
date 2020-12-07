@@ -10,7 +10,7 @@
 ; These are laid out Top to Bottom in ascending order.
 .ENUMID MODESELECT_BUTTON_PROFILE
 .ENUMID MODESELECT_BUTTON_VISUALIZER
-.ENUMID MODESELECT_BUTTON_LOADSONG
+.ENUMID MODESELECT_BUTTON_INFO
 .ENUMID MODESELECT_BUTTON_COUNT
 
 
@@ -24,7 +24,7 @@
         ; Dependent on MODESELECT_BUTTON_* enum ordering.
         UIButton_Profile        INSTANCEOF sUIButtonInstance
         UIButton_Visualizer     INSTANCEOF sUIButtonInstance
-        UIButton_LoadSong       INSTANCEOF sUIButtonInstance
+        UIButton_Info           INSTANCEOF sUIButtonInstance
     .ENDU
 .ENDST
 
@@ -58,9 +58,9 @@ ModeSelectControlsContainer:
     ld      hl, ModeSelect_Container_UIDefs@ProfileButton
     call    UIButton@Init
 
-    ; LOAD SONG
-    ld      ix, gUIContainer_ModeSelectControls.UIButton_LoadSong
-    ld      hl, ModeSelect_Container_UIDefs@LoadSongButton
+    ; INFO
+    ld      ix, gUIContainer_ModeSelectControls.UIButton_Info
+    ld      hl, ModeSelect_Container_UIDefs@InfoButton
     call    UIButton@Init
 
     ; Set each button visible and initial state.
@@ -76,8 +76,8 @@ ModeSelectControlsContainer:
     call    UIButton@SetButtonState
     call    UIButton@SetVisible
 
-    ; LOAD SONG
-    ld      ix, gUIContainer_ModeSelectControls.UIButton_LoadSong
+    ; INFO
+    ld      ix, gUIContainer_ModeSelectControls.UIButton_Info
     ld      a, BUTTON_STATE_NORMAL
     call    UIButton@SetButtonState
     call    UIButton@SetVisible
@@ -108,7 +108,7 @@ _ModeSelectControlsContainer:
     cp      UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
     jr      nz, @@HaveWidgetToSelect
     ; Otherwise, pick one by default.
-    ld      a, MODESELECT_BUTTON_LOADSONG
+    ld      a, MODESELECT_BUTTON_INFO
     ld      (gUIContainer_ModeSelectControls.BaseContainerInstance.CurrSelectedWidgetIndex), a
 
 @@HaveWidgetToSelect:
@@ -319,8 +319,8 @@ _ModeSelectControlsContainer:
     jr      z, @@Visualizer
     cp      MODESELECT_BUTTON_PROFILE
     jr      z, @@Profile
-    cp      MODESELECT_BUTTON_LOADSONG
-    jr      z, @@LoadSong
+    cp      MODESELECT_BUTTON_INFO
+    jr      z, @@Info
     ; Otherwise failed.
     ld      ix, $0000
     scf
@@ -333,8 +333,8 @@ _ModeSelectControlsContainer:
     ld      ix, gUIContainer_ModeSelectControls.UIButton_Profile
     and     a
     ret
-@@LoadSong:
-    ld      ix, gUIContainer_ModeSelectControls.UIButton_LoadSong
+@@Info:
+    ld      ix, gUIContainer_ModeSelectControls.UIButton_Info
     and     a
     ret
     

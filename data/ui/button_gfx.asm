@@ -44,6 +44,27 @@ ButtonGfx_Visualizer1bpp:
 @End:
 .ENDS
 
+.SECTION "Button Gfx - Info 1bpp" FREE
+ButtonGfx_Info1bpp:
+@Begin:
+; I
+.db $7E,$18,$18,$18
+.db $18,$18,$7E,$00
+
+; N
+.db $66,$66,$76,$7E
+.db $6E,$66,$66,$00
+
+; F
+.db $7E,$60,$60,$7C
+.db $60,$60,$60,$00
+
+; O
+.db $3C,$66,$66,$66
+.db $66,$66,$3C,$00
+@End:
+.ENDS
+
 .SECTION "Button Gfx - Load Song 1bpp" FREE
 ButtonGfx_LoadSong1bpp:
 @Begin:

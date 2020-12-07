@@ -4,7 +4,7 @@ ModeSelect_Container_UIDefs:
 @ProfileButton:
 ; Upper-left loc in the nametable for this button
 ;                    NAME                                    COL ROW
-DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_PROFILE, 10, 10 EXPORT
+DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_PROFILE, 4, 10 EXPORT
 
 .DSTRUCT @@Descriptor INSTANCEOF sUIButtonDescriptor VALUES
     pUploadNameTableHeader          .DW @@NameTableDefinition
@@ -44,7 +44,7 @@ DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_PROFILE + 
 @VisualizerButton:
 ; Upper-left loc in the nametable for this button
 ;                    NAME                                       COL ROW
-DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_VISUALIZER, 10, 12 EXPORT
+DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_VISUALIZER, 4, 12 EXPORT
 
 .DSTRUCT @@Descriptor INSTANCEOF sUIButtonDescriptor VALUES
     pUploadNameTableHeader          .DW @@NameTableDefinition
@@ -81,10 +81,10 @@ DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_VISUALIZER
 DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_VISUALIZER + 3, 0,        0,        0,          0,           0
 @@@@End:
 
-@LoadSongButton:
+@InfoButton:
 ; Upper-left loc in the nametable for this button
-;                    NAME                                      COL ROW
-DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_LOAD_SONG, 10, 14 EXPORT
+;                    NAME                                       COL ROW
+DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_INFO, 4, 14 EXPORT
 
 .DSTRUCT @@Descriptor INSTANCEOF sUIButtonDescriptor VALUES
     pUploadNameTableHeader          .DW @@NameTableDefinition
@@ -93,15 +93,15 @@ DEFINE_NAMETABLE_LOC MAIN_MENU_NAMETABLE_LOC_BUTTON_LOAD_SONG, 10, 14 EXPORT
     pUploadPatternPayload_Selected  .DW @@Selected
     pUploadPatternPayload_Pressed   .DW @@Pressed
 .ENDST
-;                                   VRAM Loc for Pattern Data                                           SOURCE_PATTERN_DATA           SOURCE_PATTERN_LENGTH                                      0s                                                    1s
+;                                   VRAM Loc for Pattern Data                                      SOURCE_PATTERN_DATA       SOURCE_PATTERN_LENGTH                              0s                                                    1s
 @@Disabled:
-DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG * _sizeof_sTile, ButtonGfx_LoadSong1bpp@Begin, ButtonGfx_LoadSong1bpp@End - ButtonGfx_LoadSong1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_BLACK,             MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_DISABLED
+DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO * _sizeof_sTile, ButtonGfx_Info1bpp@Begin, ButtonGfx_Info1bpp@End - ButtonGfx_Info1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_BLACK,             MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_DISABLED
 @@Normal:
-DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG * _sizeof_sTile, ButtonGfx_LoadSong1bpp@Begin, ButtonGfx_LoadSong1bpp@End - ButtonGfx_LoadSong1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_BLACK,             MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_NORMAL
+DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO * _sizeof_sTile, ButtonGfx_Info1bpp@Begin, ButtonGfx_Info1bpp@End - ButtonGfx_Info1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_BLACK,             MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_NORMAL
 @@Selected:
-DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG * _sizeof_sTile, ButtonGfx_LoadSong1bpp@Begin, ButtonGfx_LoadSong1bpp@End - ButtonGfx_LoadSong1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_BLACK,             MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_SELECTED
+DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO * _sizeof_sTile, ButtonGfx_Info1bpp@Begin, ButtonGfx_Info1bpp@End - ButtonGfx_Info1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_BLACK,             MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_SELECTED
 @@Pressed:
-DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG * _sizeof_sTile, ButtonGfx_LoadSong1bpp@Begin, ButtonGfx_LoadSong1bpp@End - ButtonGfx_LoadSong1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_SELECTED,    MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_DISABLED
+DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO * _sizeof_sTile, ButtonGfx_Info1bpp@Begin, ButtonGfx_Info1bpp@End - ButtonGfx_Info1bpp@Begin, MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_SELECTED,    MAIN_MENU_DATA_UI_PAL_ENTRY_BUTTON_STATE_DISABLED
 
 @@NameTableDefinition:
 .DSTRUCT INSTANCEOF sAction_UploadVRAMList_Indirect_Header VALUES
@@ -109,16 +109,16 @@ DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOA
 .ENDST
 ; Run definitions (horizontal spans)
 .DSTRUCT INSTANCEOF sAction_UploadVRAMList_Run VALUES
-    VRAMLoc                 .DW MAIN_MENU_NAMETABLE_LOC_BUTTON_LOAD_SONG
+    VRAMLoc                 .DW MAIN_MENU_NAMETABLE_LOC_BUTTON_INFO
     RunLengthInBytes        .DB @@@NameTableEntries@End - @@@NameTableEntries
 .ENDST
 ; The nametable data itself
 @@@NameTableEntries:
-;DEFINE_NAMETABLE_ENTRY ARGS PATTERN_INDEX0_511,                                     HFLIP0_1, VFLIP0_1, PALETTE0_1, PRIORITY0_1, USER_FLAGS0_7
-DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG + 0, 0,        0,        0,          0,           0
-DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG + 1, 0,        0,        0,          0,           0
-DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG + 2, 0,        0,        0,          0,           0
-DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_LOAD_SONG + 3, 0,        0,        0,          0,           0
+;DEFINE_NAMETABLE_ENTRY ARGS PATTERN_INDEX0_511,                                          HFLIP0_1, VFLIP0_1, PALETTE0_1, PRIORITY0_1, USER_FLAGS0_7
+DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO + 0, 0,        0,        0,          0,           0
+DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO + 1, 0,        0,        0,          0,           0
+DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO + 2, 0,        0,        0,          0,           0
+DEFINE_NAMETABLE_ENTRY       MAIN_MENU_DEST_VRAM_PATTERN_INDEX_BUTTON_INFO + 3, 0,        0,        0,          0,           0
 @@@@End:
 
 .ENDIF  ;__MODESELECT_CONTAINER_UI_DEFS_ASM__
