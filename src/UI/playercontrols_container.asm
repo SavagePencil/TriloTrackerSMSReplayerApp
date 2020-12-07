@@ -89,49 +89,37 @@ PlayerControlsContainer:
 _PlayerControlsContainer:
 
 .DSTRUCT @Descriptor INSTANCEOF sUIContainerDescriptor VALUES
-    OnSetSelected       .DW @OnSetSelected
-    OnNav               .DW @OnNav
-    OnUpdate            .DW @OnUpdate
+    OnNav                           .DW @OnNav
+    OnUpdate                        .DW @OnUpdate
+    OnWidgetSelectionStatusChanged  .DW @OnWidgetSelectionStatusChanged
 .ENDST
 
 ;==============================================================================
-; @OnSetSelected
-; Makes the given container the selected one.  A container may have memory of
-; which control was last selected, and select it, or it may override to a
-; default.
-; INPUTS:  IY:  Execute Buffer for any VRAM changes that need to be queued.
-; OUTPUTS: None
-; Destroys A, BC, DE, HL, IX
-;==============================================================================
-@OnSetSelected:
-    ; Did we have a button selected before?
-    ld      a, (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex)
-    cp      UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
-    jr      nz, @@HaveWidgetToSelect
-    ; Otherwise, pick one by default.
-    ld      a, PLAYERCONTROLS_BUTTON_PLAYPAUSE
-    ld      (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex), a
-
-@@HaveWidgetToSelect:
-    ; Get the currently selected button from index in A
-    call    @GetButtonFromIndex ; Gets the button into IX
-    ld      a, BUTTON_STATE_SELECTED
-    call    UIButton@SetButtonState
-
-    ret
-
-;==============================================================================
 ; @OnNav
-; Allows the container to make a decision about any nav requests.  May cause
-; it to throw the input over to another container.
+; Lets the container say where a given nav input might lead.  Does not actually
+; make the navigation change.  May result in a destination that is in another 
+; container.
 ; INPUTS:   B:  Controller state (combo of CONTROLLER_JOYPAD_* flags)
-;          DE:  Container that threw to us (NULL if none)
-;          IY:  Execute Buffer for any VRAM changes that need to be queued.
-; OUTPUTS: DE:  Container to throw to (only valid if carry is set)
-;          SETS CARRY FLAG IF THE CALLER NEEDS TO THROW TO A NEW CONTAINER.
-; Destroys A, C, HL, IX
+;           C:  Specific control index being requested to be selected (can be
+;               UI_CONTAINER_NO_WIDGET_SELECTED_INDEX if none)
+;           DE: Source container making the nav request (can be NULL).
+; OUTPUTS:  
+; Carry Set C             DE               Result
+; N         Invalid Index Ptr to Container Try container (no control requested)
+; N         Valid Index   Ptr to Container Try container (specific control requested)
+; Y         Invalid Index <Anything>       Invalid move
+; Y         Valid Index   <Anything>       Make move within this container
+; Destroys (OnEvent: AF, HL), B
 ;==============================================================================
 @OnNav:
+    ; First off:  find out if we're being thrown to by another container,
+    ; and if so, can we fulfill their request?
+    ; Is the source container NULL?
+    ld      a, e
+    or      d
+    jr      nz, @@FulfillThrowRequestFromAltContainer
+    ; It was NULL, so see if we can handle the request internally.
+
     ; Start with our currently selected item.
     ld  a, (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex)
 
@@ -148,17 +136,20 @@ _PlayerControlsContainer:
     jr  z, @@Left
     bit CONTROLLER_JOYPAD_RIGHT_BITPOS, b
     jr  z, @@Right
-
-    ; Ignore.  Clear carry.
-@@IgnoreInput:
-    and     a
+    ; Fall through to Invalid Move.
+@@InvalidMove:
+    ; For an invalid move, we want to SET the carry
+    ; AND set target index to UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+    scf
+    ld      c, UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
     ret
 
 @@Up:
     ; TODO:  Send it to the current mode window.
-    ; Send it to the mode selection.
+    ; Send it to the mode selection, with NO specific control requested.
     ld      de, gUIContainer_ModeSelectControls
-    scf
+    ld      c, UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+    and     a   ; Clear carry to indicate keep moving.
     ret
 
 @@Right:
@@ -168,44 +159,95 @@ _PlayerControlsContainer:
     cp      PLAYERCONTROLS_BUTTON_COUNT
     jr      c, @@CheckSelectable
     ; Skip it.
-    jr      @@IgnoreInput
+    jr      @@InvalidMove
 
 @@Left:
     ; Controls are set up left -> right in increasing order.
     dec     a
     ; Did we roll over?
     jp      p, @@CheckSelectable
-    ; Yes.  Skip it.
-    jr      @@IgnoreInput
+    ; Yes, we rolled over.  Send it to the mode select.
+    ld      de, gUIContainer_ModeSelectControls
+    ld      c, MODESELECT_BUTTON_LOADSONG
+    and     a   ; Clear carry to indicate keep throwing.
+    ret
 
 @@CheckSelectable:
     call    @IsButtonSelectable
-    jr      c, @@MakeSelection
-    ; This button wasn't selectable, but maybe the next one will be.
-    ; Keep going.
+    ; If it wasn't selectable (no carry), keep trying.
+    jr      nc, @@OnNavAttempt
+    ; We were selectable and our choice is in A.
+    ld      c, a    ; Store in C
+    scf             ; Indicate success
+    ret
+
+@@FulfillThrowRequestFromAltContainer:
+    ; Another container threw to us.  Lets see if we can fulfill it.
+    ; Were they requesting a specific control?
+    ld      a, c
+    cp      UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+    jr      z, @@@ChooseBestControl
+    ; Yes, they were asking for a specific control.
+    ; Is it selectable?
+    call    @IsButtonSelectable
+    jr      nc, @@@ChooseBestControl
+    ; Yes, it was selectable so let's go with that one.
+    ; It's already in C so leave it there.
+    scf     ; Indicate success
+    ret
+
+@@@ChooseBestControl:
+    ; Do we already have one selected?
+    ld      a, (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex)
+    ; Is it selectable?
+    call    @IsButtonSelectable
+    jr      nc, @@@@ScanForFirstSelectable
+    ; It was selectable, so use that.
+    ld      c, a
+    scf     ; Indicate success
+    ret
+
+@@@@ScanForFirstSelectable:
+    ; Let's treat it as a right joypad input, starting on our leftmost selection.
+    xor     a   ; First control index is 0
+    ld      b, 1 << CONTROLLER_JOYPAD_RIGHT_BITPOS
     jr      @@OnNavAttempt
 
-@@MakeSelection:
-    ; Turn off the current selection
-    push    af
-        ld  a, (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex)
-
-        ; Get the currently selected button from index in A
-        call    @GetButtonFromIndex ; Gets the button into IX
-        ld      a, BUTTON_STATE_NORMAL
-        call    UIButton@SetButtonState
-    pop     af
-
-    ; Now turn on the new selection.
-    ld      (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex), a
-    ; Get the currently selected button from index in A
-    call    @GetButtonFromIndex ; Gets the button into IX
-    ld      a, BUTTON_STATE_SELECTED
-    call    UIButton@SetButtonState
-
-    ; Clear carry.
+;==============================================================================
+; @OnWidgetSelectionStatusChanged
+; Changes the specified widget's status.  This can result in side effects such
+; as button graphics needing to be uploaded, etc.
+; INPUTS:   C:  ID of control to change
+;           B:  0 == unselected, Not-0 == selected
+;          IY:  Execute buffer for VRAM changes to queue
+; OUTPUTS:  None
+; Destroys (OnEvent: AF, HL), B
+;==============================================================================
+@OnWidgetSelectionStatusChanged:
+    ld      a, b
     and     a
+    ; Was it to be selected?
+    jr      nz, @@MakeSelected
+    ; No, make it unselected.
+    ; Find out what state the unselected button SHOULD be.
+    ld      a, c
+    call    @IsButtonSelectable
+    ; Assume selectable at first.
+    ld      b, BUTTON_STATE_NORMAL
+    jr      c, @@HaveDesiredState
+    ld      b, BUTTON_STATE_DISABLED
+@@HaveDesiredState:
+    ld      a, c
+    call    @GetButtonFromIndex
+    ld      a, b    ; Get the desired state enum into A
+    call    UIButton@SetButtonState
     ret
+@@MakeSelected:
+    ; Make this the selected one.
+    ld      a, c
+    ld      (gUIContainer_PlayerControls.BaseContainerInstance.CurrSelectedWidgetIndex), a
+    ld      b, BUTTON_STATE_SELECTED
+    jr      @@HaveDesiredState
 
 @OnUpdate:
     ret
@@ -265,6 +307,6 @@ _PlayerControlsContainer:
     ld      ix, gUIContainer_PlayerControls.UIButton_Transpose
     and     a
     ret
-    
+
 .ENDS
 .ENDIF  ; __PLAYERCONTROLS_CONTAINER_ASM__

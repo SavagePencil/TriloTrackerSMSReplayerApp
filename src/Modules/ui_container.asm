@@ -15,13 +15,16 @@
 
 ; Function pointers for an instance, which may be in ROM.
 .STRUCT sUIContainerDescriptor
-    ; Called when the selected widget is changed (allows custom logic)
-    OnSetSelected       DW
-    ; Called whenever navigation needs to be resolved 
+    ; Called to determine where navigation SHOULD go
     ; (e.g., d-pad right is pressed, where does it go?)
-    OnNav               DW
+    ; This may cause it to skip this container and go
+    ; to an entirely different one altogether.
+    OnNav                           DW
     ; Called on each tick.
-    OnUpdate            DW
+    OnUpdate                        DW
+    ; Called when a specific widget in this container
+    ; is to be selected or deselected.
+    OnWidgetSelectionStatusChanged  DW
 .ENDST
 
 .SECTION "UI Container" FREE
@@ -49,7 +52,7 @@ UIContainer:
 ;               (e.g., sUIContainerDescriptor.OnUpdate)
 ;          TBD: See specific events for other inputs/outputs.
 ; OUTPUTS: None
-; Potentially destroys all registers.
+; Potentially destroys all registers, but directly destroys HL, AF
 ;==============================================================================
 .MACRO UICONTAINER_ONEVENT ARGS EVENT_OFFSET
     ; Get the descriptor.
@@ -73,29 +76,36 @@ UIContainer:
 
 ;==============================================================================
 ; @OnNav
-; Allows the container to make a decision about any nav requests.  May cause
-; it to throw the input over to another container.
+; Lets the container say where a given nav input might lead.  Does not actually
+; make the navigation change.  May result in a destination that is in another 
+; container.
 ; INPUTS:   B:  Controller state (combo of CONTROLLER_JOYPAD_* flags)
-;          DE:  Container that threw to us (NULL if none)
-;          IY:  Execute Buffer for any VRAM changes that need to be queued.
-; OUTPUTS: DE:  Container to throw to (only valid if carry is set)
-;          SETS CARRY FLAG IF THE CALLER NEEDS TO THROW TO A NEW CONTAINER.
-; Destroys A, C, HL, IX
+;           C:  Specific control index being requested to be selected (can be
+;               UI_CONTAINER_NO_WIDGET_SELECTED_INDEX if none)
+;           DE: Source container making the nav request (can be NULL).
+; OUTPUTS:  
+; Carry Set C             DE               Result
+; N         Invalid Index Ptr to Container Try container (no control requested)
+; N         Valid Index   Ptr to Container Try container (specific control requested)
+; Y         Invalid Index <Anything>       Invalid move
+; Y         Valid Index   <Anything>       Make move within this container
+; Destroys (OnEvent: AF, HL), B
 ;==============================================================================
 @OnNav:
     UICONTAINER_ONEVENT sUIContainerDescriptor.OnNav
 
 ;==============================================================================
-; @OnSetSelected
-; Makes the given container the selected one.  A container may have memory of
-; which control was last selected, and select it, or it may override to a
-; default.
-; INPUTS:  IY:  Execute Buffer for any VRAM changes that need to be queued.
-; OUTPUTS: None
-; Destroys A, BC, DE, HL, IX
+; @OnWidgetSelectionStatusChanged
+; Changes the specified widget's status.  This can result in side effects such
+; as button graphics needing to be uploaded, etc.
+; INPUTS:   C:  ID of control to change
+;           B:  0 == unselected, Not-0 == selected
+;          IY:  Execute buffer for VRAM changes to queue
+; OUTPUTS:  None
+; Destroys (OnEvent: AF, HL), B
 ;==============================================================================
-@OnSetSelected:
-    UICONTAINER_ONEVENT sUIContainerDescriptor.OnSetSelected
+@OnWidgetSelectionStatusChanged:
+    UICONTAINER_ONEVENT sUIContainerDescriptor.OnWidgetSelectionStatusChanged
 
 .ENDS
 

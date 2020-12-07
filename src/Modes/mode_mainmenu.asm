@@ -164,9 +164,12 @@ _ModeMainMenu:
     call    PlayerControlsContainer@Init
 
     ; Start our UI for the initial selection.
-    ld      ix, gUIContainer_ModeSelectControls
+    ld      ix, gUIContainer_PlayerControls
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      c, PLAYERCONTROLS_BUTTON_PLAYPAUSE
+    ld      b, 1    ; Indicate selection
     ld      (gMainMenuScreen.pCurrContainerSelection), ix
-    call    UIContainer@OnSetSelected
+    call    UIContainer@OnWidgetSelectionStatusChanged
 
     ; With all of our graphical changes queued, go ahead and flush the execute buffer.
     ; Execute the execute buffer
@@ -225,31 +228,59 @@ _ModeMainMenu:
     call    DebounceModule@IsDebounced
     jr      nz, @@InputCheckComplete    ; If NZ, that means we're not yet debounced.
 
-    ; Start with assumption that we're not throwing input from another container.
-    ld      de, $0000
-@@ContainerHandleNav:
     ; We're debounced.  See if any inputs were pressed.
     ld      a, (gMainMenuScreen.Controller1DebounceModule.CurrentVal)
-    ld      b, a
+    ld      b, CONTROLLER_JOYPAD_UP_RELEASED | CONTROLLER_JOYPAD_DOWN_RELEASED | CONTROLLER_JOYPAD_LEFT_RELEASED | CONTROLLER_JOYPAD_RIGHT_RELEASED | CONTROLLER_JOYPAD_BUTTON1_RELEASED | CONTROLLER_JOYPAD_BUTTON2_RELEASED
+    and     b
+    cp      b
+    jr      z, @@InputCheckComplete     ; If Z, no controller inputs are pressed.
 
-    ; Pass the inputs on to the currently selected container.
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ; Start with assumption that we're not throwing input from another container.
+    ld      de, $0000
+    ; Our temp container will be our current one to start with.
     ld      ix, (gMainMenuScreen.pCurrContainerSelection)
+    ; ...and that no specific index has been requested.
+    ld      c, UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+@@ContainerHandleNav:
+    ; Pass the inputs on to the currently selected container.
+    ld      a, (gMainMenuScreen.Controller1DebounceModule.CurrentVal)
+    ld      b, a
     call    UIContainer@OnNav
-    ; If no carry, then we don't need to throw the nav attempt to anyone else.
-    jr      nc, @@NavHandled
-
-    ; Otherwise, we have a new container in DE and it becomes our currently-selected.
-    ld      (gMainMenuScreen.pCurrContainerSelection), de
-
-    ; Let the new container know that it is selected.
+    ; If carry is set, then we don't need to throw the nav attempt to anyone else.
+    jr      c, @@NavDetermined
+    ; Nav not determined.  Lets throw it to the next container to try and resolve it.
+    ; DE == container to throw to.  C == specific control requested, if any.
+    push    de
     push    ix
-        ld      ix, (gMainMenuScreen.pCurrContainerSelection)
-        call    UIContainer@OnSetSelected
-    pop     de
+    pop     de      ; DE = old container
+    pop     ix      ; IX = new container to throw to.
     jr      @@ContainerHandleNav
 
-@@NavHandled:
+@@NavDetermined:
+    ; Was the move valid?
+    ld      a, c
+    cp      UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+    jr      z, @@NavResolved
+    ; Move was valid.
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor ; Get the execute buffer for gfx changes.
+    push    bc  ; Preserve the new choice index
+        ;**************************************************************************
+        ; Unselect old choice
+        ;**************************************************************************
+        push    ix
+            ld      ix, (gMainMenuScreen.pCurrContainerSelection)
+            ld      c, (ix + sUIContainerInstance.CurrSelectedWidgetIndex)
+            ld      b, 0   ; B == 0:  Unselect it.
+            call    UIContainer@OnWidgetSelectionStatusChanged
+        pop     ix
+        ; Store new container as currently-selected one
+        ld      (gMainMenuScreen.pCurrContainerSelection), ix
+    pop     bc  ; Get the selection choice back into C
+    ; Select new choice
+    ld      b, 1    ; If B is NZ, it means to select it.
+    call    UIContainer@OnWidgetSelectionStatusChanged
+
+@@NavResolved:
     ; Now debounce the controller
     call    @SetupForDebounce
 
