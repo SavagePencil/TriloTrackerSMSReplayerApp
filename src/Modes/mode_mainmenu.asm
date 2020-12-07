@@ -5,26 +5,32 @@
 .include "Modules/debounce_module.asm"
 .include "Modules/execute_buffer.asm"
 .include "Modules/profiler_module.asm"
+.include "UI/modeselect_container.asm"
+.include "UI/playercontrols_container.asm"
 .include "Utils/macros.asm"
 .include "Utils/tile_routines.asm"
 
 .include "../data/fonts/default_font.asm"
 .include "../data/screens/main_menu_data.asm"
+.include "../data/ui/button_gfx.asm"
 
 .STRUCT sMainMenuScreen
     ; Module used to ensure the player releases buttons before we accept input from them.
     Controller1DebounceModule   INSTANCEOF sDebounceModule_Instance
-
-    ; Which menu item is currently selected?
-    CurrSelection               DB
-    PrevSelection               DB
 
     ; What graphics commands do we intend to execute?
     ExecuteBufferDescriptor     INSTANCEOF sExecuteBufferDescriptor
     ExecuteBufferMemory         DSB 128 ; Bytes of RAM for the Execute Buffer
 
     ; Temp action for the execute buffer (re-useable)
-    TempUploadStringAction      INSTANCEOF sAction_UploadString_Indirect
+    .UNION
+        TempUploadStringAction      INSTANCEOF sAction_UploadString_Indirect
+    .NEXTU
+        TempUpload1bppAction        INSTANCEOF sAction_Upload1bppToVRAM_Implicit
+    .ENDU
+
+    ; Which of our containers is currently selected?
+    pCurrContainerSelection     DW
 
     ; Create a profiler for each section
     ProfilerUpdate              INSTANCEOF sProfilerInstance
@@ -37,20 +43,6 @@
 .ENDS
 
 .SECTION "Mode - Main Menu" FREE
-
-; Constants for menu selection
-.ENUMID 0
-.ENUMID MAIN_MENU_OPTION_LOAD_SONG
-.ENUMID MAIN_MENU_OPTION_PLAY_SONG
-.ENUMID MAIN_MENU_OPTION_TOTAL_OPTIONS
-
-.DEFINE MAIN_MENU_OPTIONS_COLUMN            8
-.DEFINE MAIN_MENU_OPTIONS_FIRST_ROW         6
-; #/rows beteween options
-.DEFINE MAIN_MENU_OPTIONS_ROW_SPACING       2
-
-; Which column does the highlight start at?
-.DEFINE MAIN_MENU_OPTION_HIGHLIGHT_COLUMN   5
 
 ; What line do we start rendering the profiling info at?
 .DEFINE MAIN_MENU_PROFILER_HBLANK_LINE      100
@@ -163,35 +155,30 @@ _ModeMainMenu:
     ld      hl, Mode_MainMenu_Data@Strings@Instructions2
     call    VDP_UploadStringToNameTable
 
+    ; Init the Mode Select Controls Container
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    ModeSelectControlsContainer@Init
 
-    ; Load Song
-    ld      e, MAIN_MENU_OPTIONS_COLUMN    ; Col
-    ld      d, MAIN_MENU_OPTIONS_FIRST_ROW + ( MAIN_MENU_OPTION_LOAD_SONG * MAIN_MENU_OPTIONS_ROW_SPACING )    ; Row
-    
-    ld      b, Mode_MainMenu_Data@Strings@LoadSong@End - Mode_MainMenu_Data@Strings@LoadSong ; Len
-    ld      c, $00  ; Common attributes
-    ld      hl, Mode_MainMenu_Data@Strings@LoadSong
-    call    VDP_UploadStringToNameTable
+    ; Init the Song Player Controls Container
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    PlayerControlsContainer@Init
 
-    ; Play Song
-    ld      e, MAIN_MENU_OPTIONS_COLUMN    ; Col
-    ld      d, MAIN_MENU_OPTIONS_FIRST_ROW + ( MAIN_MENU_OPTION_PLAY_SONG * MAIN_MENU_OPTIONS_ROW_SPACING )    ; Row
-    
-    ld      b, Mode_MainMenu_Data@Strings@PlaySong@End - Mode_MainMenu_Data@Strings@PlaySong    ; Len
-    ld      c, $00  ; Common attributes
-    ld      hl, Mode_MainMenu_Data@Strings@PlaySong
-    call    VDP_UploadStringToNameTable
+    ; Start our UI for the initial selection.
+    ld      ix, gUIContainer_PlayerControls
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    ld      c, PLAYERCONTROLS_BUTTON_PLAYPAUSE
+    ld      b, 1    ; Indicate selection
+    ld      (gMainMenuScreen.pCurrContainerSelection), ix
+    call    UIContainer@OnWidgetSelectionStatusChanged
 
-    ; Start at the first option.
-    xor     a
-    ld      ( gMainMenuScreen.CurrSelection ), a
-    ld      ( gMainMenuScreen.PrevSelection ), a
+    ; With all of our graphical changes queued, go ahead and flush the execute buffer.
+    ; Execute the execute buffer
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    ExecuteBuffer_Execute
 
-    ; Render the current selection.
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      de, Mode_MainMenu_Data@Strings@Option_Selected
-    ld      b, Mode_MainMenu_Data@Strings@Option_Selected@End - Mode_MainMenu_Data@Strings@Option_Selected    ; Len
-    call    @EnqueueOptionHighlightChange
+    ; Reset the execute buffer
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+    call    ExecuteBuffer_Reset
 
     ; Make sure we're not reading input until all controls are released.
     call @SetupForDebounce
@@ -228,10 +215,6 @@ _ModeMainMenu:
     ld      hl, gMainMenuScreen.ProfilerUpdate
     call    ProfilerModule@Begin
 
-    ; The previous selection is now the current one.
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      (gMainMenuScreen.PrevSelection), a
-
     ; Read input.
     call    InputManager_OnUpdate
 
@@ -247,10 +230,59 @@ _ModeMainMenu:
 
     ; We're debounced.  See if any inputs were pressed.
     ld      a, (gMainMenuScreen.Controller1DebounceModule.CurrentVal)
-    bit     CONTROLLER_JOYPAD_DOWN_BITPOS, a
-    call    z, @MoveSelection@Down
-    bit     CONTROLLER_JOYPAD_UP_BITPOS, a
-    call    z, @MoveSelection@Up
+    ld      b, CONTROLLER_JOYPAD_UP_RELEASED | CONTROLLER_JOYPAD_DOWN_RELEASED | CONTROLLER_JOYPAD_LEFT_RELEASED | CONTROLLER_JOYPAD_RIGHT_RELEASED | CONTROLLER_JOYPAD_BUTTON1_RELEASED | CONTROLLER_JOYPAD_BUTTON2_RELEASED
+    and     b
+    cp      b
+    jr      z, @@InputCheckComplete     ; If Z, no controller inputs are pressed.
+
+    ; Start with assumption that we're not throwing input from another container.
+    ld      de, $0000
+    ; Our temp container will be our current one to start with.
+    ld      ix, (gMainMenuScreen.pCurrContainerSelection)
+    ; ...and that no specific index has been requested.
+    ld      c, UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+@@ContainerHandleNav:
+    ; Pass the inputs on to the currently selected container.
+    ld      a, (gMainMenuScreen.Controller1DebounceModule.CurrentVal)
+    ld      b, a
+    call    UIContainer@OnNav
+    ; If carry is set, then we don't need to throw the nav attempt to anyone else.
+    jr      c, @@NavDetermined
+    ; Nav not determined.  Lets throw it to the next container to try and resolve it.
+    ; DE == container to throw to.  C == specific control requested, if any.
+    push    de
+    push    ix
+    pop     de      ; DE = old container
+    pop     ix      ; IX = new container to throw to.
+    jr      @@ContainerHandleNav
+
+@@NavDetermined:
+    ; Was the move valid?
+    ld      a, c
+    cp      UI_CONTAINER_NO_WIDGET_SELECTED_INDEX
+    jr      z, @@NavResolved
+    ; Move was valid.
+    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor ; Get the execute buffer for gfx changes.
+    push    bc  ; Preserve the new choice index
+        ;**************************************************************************
+        ; Unselect old choice
+        ;**************************************************************************
+        push    ix
+            ld      ix, (gMainMenuScreen.pCurrContainerSelection)
+            ld      c, (ix + sUIContainerInstance.CurrSelectedWidgetIndex)
+            ld      b, 0   ; B == 0:  Unselect it.
+            call    UIContainer@OnWidgetSelectionStatusChanged
+        pop     ix
+        ; Store new container as currently-selected one
+        ld      (gMainMenuScreen.pCurrContainerSelection), ix
+    pop     bc  ; Get the selection choice back into C
+    ; Select new choice
+    ld      b, 1    ; If B is NZ, it means to select it.
+    call    UIContainer@OnWidgetSelectionStatusChanged
+
+@@NavResolved:
+    ; Now debounce the controller
+    call    @SetupForDebounce
 
 @@InputCheckComplete:
 
@@ -263,29 +295,6 @@ _ModeMainMenu:
     ; Start our profiler.
     ld      hl, gMainMenuScreen.ProfilerRenderPrep
     call    ProfilerModule@Begin
-
-    ; Clear our execute buffer.
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    call    ExecuteBuffer_Reset
-
-    ; Did our highlight change?
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      b, a
-    ld      a, (gMainMenuScreen.PrevSelection)
-    cp      b
-    jr      z, @@ChangeCheckDone
-    ; Selection changed.  Erase the old highlight.
-    ld      de, Mode_MainMenu_Data@Strings@Option_NotSelected
-    ld      b, Mode_MainMenu_Data@Strings@Option_NotSelected@End - Mode_MainMenu_Data@Strings@Option_NotSelected    ; Len
-    call    @EnqueueOptionHighlightChange
-
-    ; Draw the new highlight.
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      de, Mode_MainMenu_Data@Strings@Option_Selected
-    ld      b, Mode_MainMenu_Data@Strings@Option_Selected@End - Mode_MainMenu_Data@Strings@Option_Selected    ; Len
-    call    @EnqueueOptionHighlightChange
-
-@@ChangeCheckDone:
 
     ; End our profiler.
     ld      hl, gMainMenuScreen.ProfilerRenderPrep
@@ -348,6 +357,10 @@ _ModeMainMenu:
         ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
         call    ExecuteBuffer_Execute
 
+        ; Reset the execute buffer
+        ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
+        call    ExecuteBuffer_Reset
+
         ; End our profiler.
         ld      hl, gMainMenuScreen.ProfilerVBlank
         call    ProfilerModule@End
@@ -356,34 +369,6 @@ _ModeMainMenu:
         xor     a
         ld      (gWatitingForVBlank), a
     POP_ALL_REGS
-    ret
-
-;==============================================================================
-; Moves the currently selected option.  Will enqueue any VRAM updates
-; necessary.
-;==============================================================================
-@MoveSelection:
-@@Down:
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      (gMainMenuScreen.PrevSelection), a
-    inc     a
-    cp      MAIN_MENU_OPTION_TOTAL_OPTIONS
-    jr      nz, @@SetNext
-    xor     a   ; Start back at the top of the list.
-    jr      @@SetNext
-
-@@Up:
-    ld      a, (gMainMenuScreen.CurrSelection)
-    ld      (gMainMenuScreen.PrevSelection), a
-    dec     a
-    jp      p, @@SetNext
-    ld      a, MAIN_MENU_OPTION_TOTAL_OPTIONS - 1   ; Wrap to bottom of list.
-    ; FALL THROUGH
-@@SetNext:
-    ld      (gMainMenuScreen.CurrSelection), a
-
-    ; Wait for another debounce.
-    call    @SetupForDebounce
     ret
 
 ;==============================================================================
@@ -406,48 +391,6 @@ _ModeMainMenu:
     ld      hl, DebounceModule@WaitForDebounceState
     ld      ix, gMainMenuScreen.Controller1DebounceModule.DebounceFSM
     call    FSM_IX@Init
-
-    ret
-
-;==============================================================================
-; Enqueues VRAM changes for currently selected item.
-; A:  Option index to change
-; DE: String to render
-; B:  Length of string
-;==============================================================================
-@EnqueueOptionHighlightChange:
-    ; Figure out the row offset.
-    ld      c, 0
--:
-    and     a
-    jr      z, @@OffsetFound
-
-.REPT MAIN_MENU_OPTIONS_ROW_SPACING
-    inc     c
-.ENDR
-    dec     a
-    jr      -
-
-@@OffsetFound:
-    ld      a, MAIN_MENU_OPTIONS_FIRST_ROW
-    add     a, c
-
-    ; Fill out our execute buffer action.
-    ld      iy, gMainMenuScreen.TempUploadStringAction
-    ld      (iy + sAction_UploadString_Indirect.ExecuteEntry.CallbackFunction + 0), <Action_UploadString_Indirect
-    ld      (iy + sAction_UploadString_Indirect.ExecuteEntry.CallbackFunction + 1), >Action_UploadString_Indirect
-    ld      (iy + sAction_UploadString_Indirect.Length ), b
-    ld      (iy + sAction_UploadString_Indirect.pData + 0), e
-    ld      (iy + sAction_UploadString_Indirect.pData + 1), d
-    ld      (iy + sAction_UploadString_Indirect.Row), a
-    ld      (iy + sAction_UploadString_Indirect.Col), MAIN_MENU_OPTION_HIGHLIGHT_COLUMN
-    ld      (iy + sAction_UploadString_Indirect.Attribute), $00
-
-    ; The action is ready.  Add it to the ExecuteBuffer.
-    ld      iy, gMainMenuScreen.ExecuteBufferDescriptor
-    ld      de, gMainMenuScreen.TempUploadStringAction
-    ld      bc, _sizeof_sAction_UploadString_Indirect
-    call    ExecuteBuffer_AttemptEnqueue_IY
 
     ret
 

@@ -263,6 +263,137 @@ Action_UploadString_Indirect:
 
 .ENDS
 
+.SECTION "Action - Upload 1bpp Data to VRAM Implicit" FREE
+.STRUCT sColorRemap_1bpp
+    Color0s             DB      ; What palette entry to substitute for 0s?
+    Color1s             DB      ; ...and the 1s?
+.ENDST
 
+.STRUCT sAction_Upload1bppToVRAM_Payload
+    DestVRAMLoc     DW                          ; Where is it going?
+    SourceLength    DW                          ; How many bytes is the source data?
+    ColorRemaps     INSTANCEOF sColorRemap_1bpp ; How are the colors being remapped?
+    p1bppData       DW                          ; Where is the data?
+.ENDST
 
+.MACRO DECLARE_UPLOAD_1BPP_TO_VRAM_PAYLOAD ARGS DEST_PATTERN_VRAM_LOC, SOURCE_PATTERN_DATA, SOURCE_PATTERN_LENGTH, COLOR_REMAP_0s, COLOR_REMAP_1s
+.DSTRUCT INSTANCEOF sAction_Upload1bppToVRAM_Payload VALUES
+    DestVRAMLoc                     .DW DEST_PATTERN_VRAM_LOC
+    SourceLength                    .DW SOURCE_PATTERN_LENGTH
+    p1bppData                       .DW SOURCE_PATTERN_DATA
+    ColorRemaps.Color0s             .DB COLOR_REMAP_0s
+    ColorRemaps.Color1s             .DB COLOR_REMAP_1s
+.ENDST
+
+.ENDM
+
+; Converts 1bpp graphical data and uploads it to VRAM, remapping the color values.
+; The payload is embedded directly into the execute buffer.
+.STRUCT sAction_Upload1bppToVRAM_Implicit
+    ExecuteEntry    INSTANCEOF sExecuteEntry    ; Callback
+    Payload         INSTANCEOF sAction_Upload1bppToVRAM_Payload
+.ENDST
+
+;==============================================================================
+; Action_Upload1bppToVRAM_Implicit
+; Execute Buffer action to upload 1bpp graphical data to VRAM.  The payload
+; is embedded directly into the execute buffer.
+; INPUTS:  DE:  Start of sAction_Upload1bppToVRAM_Implicit
+; OUTPUTS:  DE: Next byte in Execute Buffer
+; Destroys Everything
+;==============================================================================
+Action_Upload1bppToVRAM_Implicit:
+    ; Get the Dest VRAM loc
+    ex      de, hl
+
+    ; HL points to sAction_Upload1bppToVRAM_Implicit.DestVRAMLoc
+    ld      e, (hl)
+    inc     hl
+    ld      d, (hl)
+
+    ; Set the VRAM loc before we actually upload stuff.
+    SET_VRAM_WRITE_LOC_FROM_DE
+
+    inc     hl      ; Now to SourceLength
+    ld      c, (hl)
+    inc     hl
+    ld      b, (hl) ; BC has the len
+
+    inc     hl      ; Now to palette remaps
+    ld      e, (hl) ; 0s color
+    inc     hl
+    ld      d, (hl) ; 1s color
+    
+    inc     hl      ; Now to pData
+    ld      a, (hl)
+    inc     hl
+    push    hl      ; Preserve it
+        ld      h, (hl)
+        ld      l, a
+
+        call    Tile_Upload1BPPWithPaletteRemaps_VRAMPtrSet
+    pop     de      ; Restore it *TO DE*
+
+    inc     de      ; Move past last byte in this Action
+
+    ret
+.ENDS 
+
+.SECTION "Action - Upload 1bpp Data to VRAM Indirect" FREE
+; Converts 1bpp graphical data and uploads it to VRAM, remapping the color values.
+; The payload is stored as a pointer in the execute buffer.
+.STRUCT sAction_Upload1bppToVRAM_Indirect
+    ExecuteEntry    INSTANCEOF sExecuteEntry    ; Callback
+    pPayload        DW                          ; Pointer to an sAction_Upload1bppToVRAM_Payload
+.ENDST
+
+;==============================================================================
+; Action_Upload1bppToVRAM_Indirect
+; Execute Buffer action to upload 1bpp graphical data to VRAM.  The payload
+; is stored as a pointer in the execute buffer.
+; INPUTS:  DE:  Start of sAction_Upload1bppToVRAM_Indirect
+; OUTPUTS:  DE: Next byte in Execute Buffer
+; Destroys Everything
+;==============================================================================
+Action_Upload1bppToVRAM_Indirect:
+    ; Get the pointer value.
+    ld      a, (de)
+    ld      l, a
+    inc     de
+    ld      a, (de)
+    ld      h, a
+    inc     de
+
+    push    de
+        ; Get the Dest VRAM loc
+        ; HL points to sAction_Upload1bppToVRAM_Indirect.DestVRAMLoc
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+
+        ; Set the VRAM loc before we actually upload stuff.
+        SET_VRAM_WRITE_LOC_FROM_DE
+
+        inc     hl      ; Now to SourceLength
+        ld      c, (hl)
+        inc     hl
+        ld      b, (hl) ; BC has the len
+
+        inc     hl      ; Now to palette remaps
+        ld      e, (hl) ; 0s color
+        inc     hl
+        ld      d, (hl) ; 1s color
+        
+        inc     hl      ; Now to pData
+        ld      a, (hl)
+        inc     hl
+        ld      h, (hl)
+        ld      l, a
+
+        call    Tile_Upload1BPPWithPaletteRemaps_VRAMPtrSet
+    pop     de          ; Restore to next byte in Execute Buffer.
+
+    ret
+
+.ENDS
 .ENDIF  ; __ACTION_UPLOAD_VRAMDATA_ASM__

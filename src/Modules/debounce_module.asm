@@ -44,8 +44,9 @@ DebounceModule:
     ; Are we in the debounced state?
     ld  l, (ix + sDebounceModule_Instance.DebounceFSM.CurrentState + 0)
     ld  h, (ix + sDebounceModule_Instance.DebounceFSM.CurrentState + 1)
-    ld  de, -@DebouncedState
-    add hl, de                  ; Compare current state vs. done state
+    ld  de, @DebouncedState
+    and a       ; Clear carry.
+    sbc hl, de
     ret
 
 
